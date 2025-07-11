@@ -4,7 +4,7 @@ import pandas as pd
 import folium
 import streamlit as st
 import numpy as np
-from streamlit_folium import st_folium
+from streamlit_folium import st_folium 
 from data_preprocess import load_crime_data, add_time_of_day  # Import from your data_preprocess file
 
 # ================= FREE OSRM CONFIGURATION =================
