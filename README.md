@@ -21,9 +21,8 @@ Quantifies route risk using clustering + historical data.
 ✅ **Streamlit Dashboard**  
 Interactive, modular dashboard with real-time maps, charts, and filters.
 
-
-
-CRIME_SAFETY_APPV2 Structure
+## 📁 CRIME_SAFETY_APPV2 Structure
+```
 ├── app.py # Streamlit main entry
 ├── clustering.py # UI for crime clustering
 ├── forecast.py # Crime forecasting
@@ -36,7 +35,8 @@ CRIME_SAFETY_APPV2 Structure
 │ └── crime_data.parquet # Preprocessed crime dataset
 ├── models/
 │ └── crime_model.pkl # Trained clustering or forecast models
-├── requirements.txt
+├── requirements.txt 
+```
 
 ---
 
