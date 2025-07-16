@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 
 # ✅ Set page config
 st.set_page_config(
@@ -108,7 +110,7 @@ try:
                         st.error("❌ Unable to generate routes. Please try different areas.")
     
     def run_area_analysis():
-        """Area Analysis functionality"""
+        """Enhanced Area Analysis functionality with improved formatting and visualization"""
         st.markdown("### 📊 Crime Analysis by Area")
         
         # Load area data
@@ -164,26 +166,84 @@ try:
             area_data = crime_df[crime_df["AREA NAME"] == selected_area]
             
             if not area_data.empty:
-                # Key metrics
+                # Key metrics with improved formatting
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
-                    st.metric("📊 Total Incidents", len(area_data))
+                    total_incidents = len(area_data)
+                    st.markdown(f"""
+                    <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #1f77b4;">
+                        <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
+                            📊 Total Incidents
+                        </div>
+                        <div style="color: #262730; font-size: 18px; font-weight: 700; line-height: 1.2;">
+                            {total_incidents:,}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 
                 with col2:
                     if 'Vict Sex' in area_data.columns:
-                        most_common_victim = area_data['Vict Sex'].mode()[0] if not area_data['Vict Sex'].mode().empty else "N/A"
-                        st.metric("👥 Most Affected", most_common_victim)
+                        # Clean and categorize victim sex data into exactly 3 categories
+                        victim_sex_cleaned = area_data['Vict Sex'].fillna('Others').str.upper().str.strip()
+                        
+                        # Map all variations to 3 categories only
+                        def categorize_victim_sex(sex):
+                            if sex in ['M', 'MALE']:
+                                return 'Male'
+                            elif sex in ['F', 'FEMALE']:
+                                return 'Female'
+                            else:  # X, H, -, NaN, Others, etc.
+                                return 'Others'
+                        
+                        victim_sex_final = victim_sex_cleaned.apply(categorize_victim_sex)
+                        
+                        # Get most common victim category
+                        most_common_victim = victim_sex_final.mode()[0] if not victim_sex_final.mode().empty else "N/A"
+                        
+                        st.markdown(f"""
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #9467bd;">
+                            <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
+                                👥 Most Affected
+                            </div>
+                            <div style="color: #262730; font-size: 18px; font-weight: 700; line-height: 1.2;">
+                                {most_common_victim}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                 
                 with col3:
                     if 'Time of Day' in area_data.columns:
                         peak_time = area_data['Time of Day'].mode()[0] if not area_data['Time of Day'].mode().empty else "N/A"
-                        st.metric("⏰ Peak Crime Time", peak_time)
+                        
+                        st.markdown(f"""
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #ff7f0e;">
+                            <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
+                                ⏰ Peak Crime Time
+                            </div>
+                            <div style="color: #262730; font-size: 18px; font-weight: 700; line-height: 1.2;">
+                                {peak_time}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                 
                 with col4:
                     if 'Crm Cd Desc' in area_data.columns:
                         top_crime = area_data['Crm Cd Desc'].mode()[0] if not area_data['Crm Cd Desc'].mode().empty else "N/A"
-                        st.metric("🚨 Most Common Crime", str(top_crime)[:15] + "..." if len(str(top_crime)) > 15 else str(top_crime))
+                        # Display full crime text with smaller font using HTML
+                        crime_text = str(top_crime)
+                        
+                        # Use HTML to make the text smaller and wrap if needed
+                        st.markdown(f"""
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #ff4b4b;">
+                            <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
+                                🚨 Most Common Crime
+                            </div>
+                            <div style="color: #262730; font-size: 11px; line-height: 1.2; word-wrap: break-word; font-weight: 500;">
+                                {crime_text}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                 
                 # Detailed analysis
                 if st.button("📈 Show Detailed Analysis", key="detailed_analysis"):
@@ -201,24 +261,113 @@ try:
                     with col2:
                         if 'Vict Sex' in area_data.columns:
                             st.markdown("#### 👥 Victim Distribution")
-                            gender_dist = area_data['Vict Sex'].value_counts()
+                            # Clean and categorize victim sex data into exactly 3 categories
+                            victim_sex_cleaned = area_data['Vict Sex'].fillna('Others').str.upper().str.strip()
+                            
+                            # Map all variations to 3 categories only
+                            def categorize_victim_sex(sex):
+                                if sex in ['M', 'MALE']:
+                                    return 'Male'
+                                elif sex in ['F', 'FEMALE']:
+                                    return 'Female'
+                                else:  # X, H, -, NaN, Others, etc.
+                                    return 'Others'
+                            
+                            victim_sex_final = victim_sex_cleaned.apply(categorize_victim_sex)
+                            
+                            # Create clean distribution with exactly 3 categories
+                            gender_dist = victim_sex_final.value_counts()
                             st.bar_chart(gender_dist)
                     
                     if 'Crm Cd Desc' in area_data.columns:
-                        st.markdown("#### 🚨 Top Crime Types")
+                        st.markdown("#### 🚨 Most Frequent Crime Types")
                         crime_types = area_data['Crm Cd Desc'].value_counts().head(10)
-                        st.bar_chart(crime_types)
+                        
+                        # Calculate percentages
+                        total_crimes = len(area_data)
+                        crime_percentages = (crime_types / total_crimes * 100).round(1)
+                        
+                        # Create a custom chart with colors and better formatting
+                        # Prepare data for plotting
+                        crime_data_for_plot = pd.DataFrame({
+                            'Crime Type': crime_percentages.index,
+                            'Percentage': crime_percentages.values,
+                            'Count': crime_types.values  # Keep count for tooltip
+                        })
+                        
+                        # Truncate long crime names for better display
+                        crime_data_for_plot['Crime Type'] = crime_data_for_plot['Crime Type'].apply(
+                            lambda x: x[:25] + "..." if len(str(x)) > 25 else str(x)
+                        )
+                        
+                        # Define colors for top 5 crimes
+                        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', 
+                                 '#FF9F43', '#6C5CE7', '#A29BFE', '#FD79A8', '#E17055']
+                        
+                        # Create the bar chart with percentages
+                        fig = go.Figure(data=[
+                            go.Bar(
+                                x=crime_data_for_plot['Crime Type'],
+                                y=crime_data_for_plot['Percentage'],
+                                marker_color=colors[:len(crime_data_for_plot)],
+                                text=[f"{pct}%" for pct in crime_data_for_plot['Percentage']],
+                                textposition='auto',
+                                hovertemplate='<b>%{x}</b><br>' +
+                                            'Percentage: %{y}%<br>' +
+                                            'Count: %{customdata}<br>' +
+                                            '<extra></extra>',
+                                customdata=crime_data_for_plot['Count']
+                            )
+                        ])
+                        
+                        # Update layout for better readability
+                        fig.update_layout(
+                            title=f"Most Frequent Crime Types in {selected_area} (% Distribution)",
+                            xaxis_title="Crime Type",
+                            yaxis_title="Percentage of Total Crimes (%)",
+                            showlegend=False,
+                            height=500,
+                            xaxis=dict(
+                                tickangle=-45,
+                                tickfont=dict(size=10),
+                            ),
+                            yaxis=dict(
+                                tickfont=dict(size=10),
+                                ticksuffix="%"
+                            ),
+                            title_font=dict(size=14),
+                            margin=dict(b=150)  # Increase bottom margin for rotated labels
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
                     
                     # Area-specific safety recommendations
                     st.markdown("#### 🛡️ Area-Specific Safety Tips")
                     if 'Time of Day' in area_data.columns:
                         peak_time = area_data['Time of Day'].mode()[0] if not area_data['Time of Day'].mode().empty else "Any Time"
                         if peak_time == "Night":
-                            st.warning(f"🌙 Peak crime time in {selected_area}: Night hours. Avoid traveling through this area at night when possible.")
+                            st.warning(f"🌙 **Peak crime time in {selected_area}**: Night hours. Avoid traveling through this area at night when possible.")
                         elif peak_time == "Evening":
-                            st.info(f"🌆 Peak crime time in {selected_area}: Evening hours. Use extra caution during evening.")
+                            st.info(f"🌆 **Peak crime time in {selected_area}**: Evening hours. Use extra caution during evening.")
                         else:
-                            st.success(f"☀️ Peak crime time in {selected_area}: {peak_time}. Generally safer conditions.")
+                            st.success(f"☀️ **Peak crime time in {selected_area}**: {peak_time}. Generally safer conditions.")
+                    
+                    # Additional safety recommendations based on most common crimes
+                    if 'Crm Cd Desc' in area_data.columns:
+                        top_crimes = area_data['Crm Cd Desc'].value_counts().head(3)
+                        st.markdown("##### 🎯 Crime-Specific Precautions")
+                        
+                        for i, (crime, count) in enumerate(top_crimes.items()):
+                            crime_lower = str(crime).lower()
+                            
+                            if any(word in crime_lower for word in ['theft', 'burglary', 'robbery']):
+                                st.info(f"🔒 **{crime}** ({count} incidents): Secure valuables, avoid displaying expensive items")
+                            elif any(word in crime_lower for word in ['assault', 'battery']):
+                                st.warning(f"⚠️ **{crime}** ({count} incidents): Stay in well-lit areas, avoid isolated locations")
+                            elif any(word in crime_lower for word in ['vehicle', 'auto']):
+                                st.info(f"🚗 **{crime}** ({count} incidents): Park in secure areas, lock vehicles, remove valuables")
+                            else:
+                                st.info(f"📊 **{crime}** ({count} incidents): Stay alert and follow general safety precautions")
             
             else:
                 st.info(f"No crime data available for {selected_area}")
@@ -362,3 +511,6 @@ st.markdown(
     """, 
     unsafe_allow_html=True
 )
+    
+    
+    
