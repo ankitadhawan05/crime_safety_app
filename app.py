@@ -260,7 +260,7 @@ try:
                     
                     with col2:
                         if 'Vict Sex' in area_data.columns:
-                            st.markdown("#### 👥 Victim Distribution")
+                            st.markdown("#### 👥 Victim Distribution by Gender")
                             # Clean and categorize victim sex data into exactly 3 categories
                             victim_sex_cleaned = area_data['Vict Sex'].fillna('Others').str.upper().str.strip()
                             
@@ -278,6 +278,83 @@ try:
                             # Create clean distribution with exactly 3 categories
                             gender_dist = victim_sex_final.value_counts()
                             st.bar_chart(gender_dist)
+                    
+                    # Add victim distribution by age group
+                    col3, col4 = st.columns(2)
+                    
+                    with col3:
+                        if 'Vict Age' in area_data.columns:
+                            st.markdown("#### 👶👦👨👴 Victim Distribution by Age Group")
+                            
+                            # Clean age data and convert to numeric
+                            victim_ages = pd.to_numeric(area_data['Vict Age'], errors='coerce')
+                            
+                            # Define age group categorization function (only for valid ages)
+                            def categorize_age_group(age):
+                                if pd.isna(age) or age < 0 or age > 120:  # Filter out invalid ages
+                                    return None  # Will be filtered out
+                                elif age < 12:
+                                    return 'Children (0-11)'
+                                elif age < 18:
+                                    return 'Adolescents (12-17)'
+                                elif age < 40:
+                                    return 'Adults (18-39)'
+                                elif age < 60:
+                                    return 'Middle-aged (40-59)'
+                                else:
+                                    return 'Elderly (60+)'
+                            
+                            # Apply age group categorization and filter out invalid ages
+                            age_groups = victim_ages.apply(categorize_age_group)
+                            age_groups_valid = age_groups.dropna()  # Remove None values (invalid ages)
+                            
+                            # Create age group distribution (only valid ages)
+                            age_dist = age_groups_valid.value_counts()
+                            
+                            # Reorder for logical display (youngest to oldest)
+                            desired_order = ['Children (0-11)', 'Adolescents (12-17)', 'Adults (18-39)', 
+                                           'Middle-aged (40-59)', 'Elderly (60+)']
+                            age_dist_ordered = age_dist.reindex([cat for cat in desired_order if cat in age_dist.index])
+                            
+                            st.bar_chart(age_dist_ordered)
+                    
+                    with col4:
+                        # Add some statistics about age distribution
+                        if 'Vict Age' in area_data.columns:
+                            st.markdown("#### 📊 Age Group Statistics")
+                            
+                            # Calculate statistics
+                            victim_ages_clean = pd.to_numeric(area_data['Vict Age'], errors='coerce')
+                            valid_ages = victim_ages_clean.dropna()
+                            valid_ages = valid_ages[(valid_ages >= 0) & (valid_ages <= 120)]  # Filter realistic ages
+                            
+                            if len(valid_ages) > 0:
+                                avg_age = valid_ages.mean()
+                                median_age = valid_ages.median()
+                                # Use only valid age groups for most vulnerable calculation
+                                most_vulnerable_group = age_groups_valid.value_counts().index[0] if len(age_groups_valid.value_counts()) > 0 else "No data"
+                                
+                                st.markdown(f"""
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #17a2b8;">
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>📈 Average Age:</strong> {avg_age:.1f} years
+                                    </div>
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>📊 Median Age:</strong> {median_age:.0f} years
+                                    </div>
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>🎯 Most Affected Group:</strong><br>
+                                        <span style="color: #dc3545; font-weight: 600;">{most_vulnerable_group}</span>
+                                    </div>
+                                    <div style="font-size: 11px; color: #6c757d; margin-top: 10px;">
+                                        Based on {len(valid_ages):,} valid age records
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            else:
+                                st.info("No valid age data available for analysis")
+                        else:
+                            st.info("Age data not available in this dataset")
                     
                     if 'Crm Cd Desc' in area_data.columns:
                         st.markdown("#### 🚨 Most Frequent Crime Types")
