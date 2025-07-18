@@ -32,7 +32,8 @@ Interactive, modular dashboard with real-time maps, charts, and filters.
 ├── train_clustering_model.py # Clustering model training
 ├── data_preprocess.py # Feature engineering
 ├── data/
-│ └── crime_data.parquet # Preprocessed crime dataset
+│ └── crime_data.parquet # Preprocessed crime dataset downloaded from data.gov
+└── LAPD_police_stations # Downloaded from geohub.lacity.org
 ├── models/
 │ └── crime_model.pkl # Trained clustering or forecast models
 ├── requirements.txt 
