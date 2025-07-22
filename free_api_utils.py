@@ -1,4 +1,4 @@
-# simple_free_api_utils.py - Enhanced version with Google Maps-like routing
+# simple_free_api_utils.py - Restored version with original Google Maps-style routing + enhanced safety analysis
 import requests
 import pandas as pd
 import folium
@@ -10,10 +10,10 @@ from data_preprocess import load_crime_data, add_time_of_day  # Import from your
 # ================= FREE OSRM CONFIGURATION =================
 OSRM_HOST = "router.project-osrm.org"  # Free public OSRM server
 
-# ================= LOAD CRIME DATA =================
+# ================= ENHANCED CRIME DATA LOADING WITH TIME FILTERING =================
 @st.cache_data
-def load_crime_data_simple():
-    """Load and prepare crime data using your existing data_preprocess functions"""
+def load_crime_data_with_time_filter(time_of_travel="Any Time"):
+    """Load and prepare crime data with time-based filtering"""
     try:
         # Use your existing load_crime_data function
         df = load_crime_data()
@@ -22,33 +22,56 @@ def load_crime_data_simple():
         if 'Time of Day' not in df.columns:
             df = add_time_of_day(df)
         
-        # Add simple clustering if not present
+        # Filter by time of travel if specified
+        if time_of_travel != "Any Time":
+            time_mapping = {
+                "Morning (6-12)": "Morning",
+                "Afternoon (12-16)": "Afternoon", 
+                "Evening (16-18)": "Evening",
+                "Night (18-6)": "Night"
+            }
+            
+            target_time = time_mapping.get(time_of_travel)
+            if target_time:
+                df = df[df['Time of Day'] == target_time].copy()
+        
+        # Enhanced crime severity clustering
         if 'Cluster' not in df.columns:
-            # Simple risk clustering based on crime frequency per area
-            area_counts = df.groupby('AREA NAME').size()
-            high_threshold = area_counts.quantile(0.7)
-            low_threshold = area_counts.quantile(0.3)
+            # Enhanced clustering based on crime type severity and frequency
+            serious_crimes = [
+                'ROBBERY', 'ASSAULT', 'BURGLARY', 'RAPE', 'HOMICIDE', 
+                'KIDNAPPING', 'ARSON', 'SHOTS FIRED', 'CRIMINAL THREATS'
+            ]
             
-            df['Area_Crime_Count'] = df['AREA NAME'].map(area_counts)
+            def classify_crime_severity(row):
+                crime_desc = str(row.get('Crm Cd Desc', '')).upper()
+                
+                # Check for serious crimes (High Risk - Cluster 0)
+                if any(serious_crime in crime_desc for serious_crime in serious_crimes):
+                    return 0  # High risk (Red)
+                
+                # Medium severity crimes (Medium Risk - Cluster 1)
+                medium_crimes = [
+                    'THEFT', 'VANDALISM', 'FRAUD', 'BATTERY', 'SHOPLIFTING',
+                    'VEHICLE', 'STOLEN', 'TRESPASSING'
+                ]
+                
+                if any(medium_crime in crime_desc for medium_crime in medium_crimes):
+                    return 1  # Medium risk (Yellow)
+                
+                # Low severity crimes (Low Risk - Cluster 2)
+                return 2  # Low risk (Green areas)
             
-            def assign_cluster(count):
-                if count >= high_threshold:
-                    return 0  # High risk
-                elif count <= low_threshold:
-                    return 2  # Low risk
-                else:
-                    return 1  # Medium risk
-            
-            df['Cluster'] = df['Area_Crime_Count'].apply(assign_cluster)
+            df['Cluster'] = df.apply(classify_crime_severity, axis=1)
         
         return df
     except Exception as e:
         st.error(f"Error loading crime data: {e}")
         return None
 
-# ================= FREE OSRM ROUTING =================
+# ================= ORIGINAL OSRM ROUTING (RESTORED) =================
 def get_free_osrm_routes(start_coords, end_coords, travel_mode="driving"):
-    """Get real road routes from free OSRM public server"""
+    """Get real road routes from free OSRM public server - ORIGINAL VERSION"""
     
     # OSRM profile mapping
     profile_mapping = {
@@ -120,7 +143,7 @@ def get_free_osrm_routes(start_coords, end_coords, travel_mode="driving"):
         return None, None
 
 def create_safer_variation(base_route):
-    """Create a safer variation of a route"""
+    """Create a safer variation of a route - ORIGINAL VERSION"""
     if not base_route or len(base_route) < 3:
         return base_route
     
@@ -141,7 +164,7 @@ def create_safer_variation(base_route):
     return safe_route
 
 def create_balanced_variation(base_route):
-    """Create a balanced variation of a route"""
+    """Create a balanced variation of a route - ORIGINAL VERSION"""
     if not base_route or len(base_route) < 3:
         return base_route
     
@@ -158,9 +181,9 @@ def create_balanced_variation(base_route):
     
     return balanced_route
 
-# ================= FALLBACK SIMULATED ROUTES =================
+# ================= ORIGINAL FALLBACK SIMULATED ROUTES =================
 def generate_simulated_routes(start_coords, end_coords, travel_mode="driving"):
-    """Generate simulated routes when OSRM is unavailable"""
+    """Generate simulated routes when OSRM is unavailable - ORIGINAL VERSION"""
     
     start_lat, start_lon = start_coords
     end_lat, end_lon = end_coords
@@ -223,69 +246,74 @@ def generate_simulated_routes(start_coords, end_coords, travel_mode="driving"):
     
     return routes
 
-# ================= ENHANCED RISK SCORING =================
-def score_route_safety(route_coords, crime_df, risk_threshold=0.01):
-    """Score route safety based on crime data proximity"""
-    if crime_df is None or crime_df.empty:
-        return 5, {"high_risk": 0, "medium_risk": 1, "safe_segments": len(route_coords)-1}
+# ================= ENHANCED ROUTE SAFETY ANALYSIS =================
+def analyze_route_crime_exposure(route_coords, crime_df, proximity_threshold=0.005):
+    """Analyze how much a route passes through different crime zones"""
+    if crime_df is None or crime_df.empty or not route_coords:
+        return {"high_crime_exposure": 0, "medium_crime_exposure": 0, "total_segments": len(route_coords)}
     
     try:
-        # Sample crime data for performance
-        max_points = 1000
-        if len(crime_df) > max_points:
-            crime_sample = crime_df.sample(n=max_points, random_state=42)
-        else:
-            crime_sample = crime_df
+        # Get crime points by severity
+        high_crime_points = crime_df[crime_df["Cluster"] == 0][["LAT", "LON"]].values  # Red dots
+        medium_crime_points = crime_df[crime_df["Cluster"] == 1][["LAT", "LON"]].values  # Yellow dots
         
-        risk_score = 0
-        risk_details = {"high_risk": 0, "medium_risk": 0, "safe_segments": 0}
-        
-        # Get crime points by risk level
-        high_risk_points = crime_sample[crime_sample["Cluster"] == 0][["LAT", "LON"]].values
-        medium_risk_points = crime_sample[crime_sample["Cluster"] == 1][["LAT", "LON"]].values
+        high_crime_exposure = 0
+        medium_crime_exposure = 0
+        total_segments = len(route_coords)
         
         for lon, lat in route_coords:
-            found_risk = False
+            # Check proximity to high crime areas (red dots)
+            if len(high_crime_points) > 0:
+                high_distances = np.sqrt(np.sum((high_crime_points - [lat, lon])**2, axis=1))
+                if np.any(high_distances < proximity_threshold):
+                    high_crime_exposure += 1
+                    continue  # If high crime found, don't check medium
             
-            # Check high risk areas
-            if len(high_risk_points) > 0:
-                distances = np.sqrt(np.sum((high_risk_points - [lat, lon])**2, axis=1))
-                if np.any(distances < risk_threshold):
-                    risk_score += 5
-                    risk_details["high_risk"] += 1
-                    found_risk = True
-            
-            # Check medium risk areas
-            if not found_risk and len(medium_risk_points) > 0:
-                distances = np.sqrt(np.sum((medium_risk_points - [lat, lon])**2, axis=1))
-                if np.any(distances < risk_threshold):
-                    risk_score += 2
-                    risk_details["medium_risk"] += 1
-                    found_risk = True
-            
-            if not found_risk:
-                risk_details["safe_segments"] += 1
+            # Check proximity to medium crime areas (yellow dots)
+            if len(medium_crime_points) > 0:
+                medium_distances = np.sqrt(np.sum((medium_crime_points - [lat, lon])**2, axis=1))
+                if np.any(medium_distances < proximity_threshold):
+                    medium_crime_exposure += 1
         
-        return risk_score, risk_details
-        
+        return {
+            "high_crime_exposure": high_crime_exposure,
+            "medium_crime_exposure": medium_crime_exposure,
+            "total_segments": total_segments,
+            "high_crime_percentage": (high_crime_exposure / total_segments) * 100,
+            "medium_crime_percentage": (medium_crime_exposure / total_segments) * 100
+        }
+    
     except Exception:
-        return 5, {"high_risk": 0, "medium_risk": 1, "safe_segments": len(route_coords)-1}
+        return {"high_crime_exposure": 0, "medium_crime_exposure": 0, "total_segments": total_segments}
 
-# ================= GOOGLE MAPS-LIKE DISPLAY =================
-def create_enhanced_map(routes_data, crime_df, start_coords, end_coords, travel_mode, route_info=None):
-    """Create Google Maps-like visualization with crime-aware routing"""
+def determine_route_safety_level(exposure_analysis):
+    """Determine route safety level based on crime exposure"""
+    high_percentage = exposure_analysis["high_crime_percentage"]
+    medium_percentage = exposure_analysis["medium_crime_percentage"]
+    
+    # Define thresholds
+    if high_percentage > 15:  # More than 15% through high crime areas
+        return "high_risk", "red"
+    elif high_percentage > 5 or medium_percentage > 25:  # Some high crime or lots of medium crime
+        return "medium_risk", "orange"
+    else:  # Minimal exposure to crime areas
+        return "low_risk", "green"
+
+# ================= ORIGINAL GOOGLE MAPS-LIKE DISPLAY (RESTORED) =================
+def create_enhanced_map(routes_data, crime_df, start_coords, end_coords, travel_mode, time_of_travel, safety_priority, route_info=None):
+    """Create Google Maps-like visualization with crime-aware routing - ORIGINAL + ENHANCED"""
     
     center_lat = (start_coords[0] + end_coords[0]) / 2
     center_lon = (start_coords[1] + end_coords[1]) / 2
     
-    # Create map with Google Maps-like styling
+    # Create map with Google Maps-like styling - ORIGINAL
     m = folium.Map(
         location=[center_lat, center_lon], 
         zoom_start=12,
         prefer_canvas=True
     )
     
-    # Add multiple tile layers
+    # Add multiple tile layers - ORIGINAL
     folium.TileLayer(
         tiles='OpenStreetMap',
         name='Street Map',
@@ -301,18 +329,18 @@ def create_enhanced_map(routes_data, crime_df, start_coords, end_coords, travel_
         control=True
     ).add_to(m)
     
-    # Add crime data visualization
+    # Add crime data visualization - ENHANCED with time filtering
     if crime_df is not None and not crime_df.empty:
-        crime_layer = folium.FeatureGroup(name="Crime Risk Zones", show=True)
+        crime_layer = folium.FeatureGroup(name=f"Crime Risk Zones ({time_of_travel})", show=True)
         
-        # Sample for performance
+        # Sample for performance - ORIGINAL
         max_crime_points = 400
         if len(crime_df) > max_crime_points:
             crime_sample = crime_df.sample(n=max_crime_points, random_state=42)
         else:
             crime_sample = crime_df
         
-        # Crime visualization with clear color coding
+        # Crime visualization with clear color coding - ORIGINAL
         crime_colors = {0: '#FF0000', 1: '#FFA500', 2: '#00FF00'}  # Red, Orange, Green
         crime_names = {0: 'High Crime Risk', 1: 'Medium Crime Risk', 2: 'Low Crime Risk'}
         
@@ -333,38 +361,58 @@ def create_enhanced_map(routes_data, crime_df, start_coords, end_coords, travel_
         
         crime_layer.add_to(m)
     
-    # Add routes with crime-awareness
-    route_styles = {
-        "low_risk": {
-            "color": "#00FF00", 
-            "weight": 6, 
-            "opacity": 0.8, 
-            "dash_array": None,
-            "label": "🟢 Safe Route (Low Crime Risk)"
-        },
-        "medium_risk": {
-            "color": "#FFA500", 
-            "weight": 5, 
-            "opacity": 0.7, 
-            "dash_array": "10,5" if travel_mode in ["walking", "cycling"] else None,
-            "label": "🟡 Balanced Route (Medium Risk)"
-        },
-        "high_risk": {
-            "color": "#FF0000", 
-            "weight": 5, 
-            "opacity": 0.7, 
-            "dash_array": "5,5" if travel_mode in ["walking", "cycling"] else None,
-            "label": "🔴 Direct Route (High Crime Risk)"
-        }
-    }
-    
+    # ENHANCED: Analyze routes for actual safety colors
+    route_metadata = {}
     for route_type, route_coords in routes_data.items():
         if route_coords:
-            style = route_styles.get(route_type, route_styles["medium_risk"])
+            exposure = analyze_route_crime_exposure(route_coords, crime_df)
+            safety_level, color = determine_route_safety_level(exposure)
+            route_metadata[route_type] = {
+                "exposure": exposure,
+                "safety_level": safety_level,
+                "color": color
+            }
+    
+    # Add routes with ENHANCED crime-aware coloring but ORIGINAL Google Maps styling
+    for route_type, route_coords in routes_data.items():
+        if route_coords:
+            # ENHANCED: Use actual crime exposure to determine color
+            if route_type in route_metadata:
+                metadata = route_metadata[route_type]
+                actual_safety = metadata["safety_level"]
+                
+                if actual_safety == "low_risk":
+                    color = "#00AA00"  # Green - actually safe
+                    weight = 6
+                    opacity = 0.9
+                    label = "🟢 Safe Route"
+                elif actual_safety == "medium_risk":
+                    color = "#FF8C00"  # Orange - moderate risk
+                    weight = 5
+                    opacity = 0.8
+                    label = "🟡 Moderate Risk Route"
+                else:  # high_risk
+                    color = "#DC143C"  # Red - high risk
+                    weight = 5
+                    opacity = 0.8
+                    label = "🔴 High Risk Route"
+            else:
+                # ORIGINAL fallback styling
+                route_styles = {
+                    "low_risk": {"color": "#00FF00", "weight": 6, "opacity": 0.8, "label": "🟢 Safe Route"},
+                    "medium_risk": {"color": "#FFA500", "weight": 5, "opacity": 0.7, "label": "🟡 Balanced Route"},
+                    "high_risk": {"color": "#FF0000", "weight": 5, "opacity": 0.7, "label": "🔴 Direct Route"}
+                }
+                style = route_styles.get(route_type, route_styles["medium_risk"])
+                color = style["color"]
+                weight = style["weight"]
+                opacity = style["opacity"]
+                label = style["label"]
+            
             route_points = [[lat, lon] for lon, lat in route_coords]
             
-            # Add route info to popup if available
-            popup_text = style["label"]
+            # Add route info to popup if available - ORIGINAL
+            popup_text = label
             if route_info:
                 for info in route_info:
                     if info.get("coordinates") == route_coords:
@@ -373,14 +421,13 @@ def create_enhanced_map(routes_data, crime_df, start_coords, end_coords, travel_
             
             folium.PolyLine(
                 route_points,
-                color=style["color"],
-                weight=style["weight"],
-                opacity=style["opacity"],
-                dash_array=style["dash_array"],
+                color=color,
+                weight=weight,
+                opacity=opacity,
                 popup=popup_text
             ).add_to(m)
     
-    # Add travel mode specific markers
+    # Add travel mode specific markers - ORIGINAL
     mode_icons = {
         "driving": "car",
         "walking": "walking",
@@ -401,35 +448,36 @@ def create_enhanced_map(routes_data, crime_df, start_coords, end_coords, travel_
         icon=folium.Icon(color='red', icon='flag', prefix='fa')
     ).add_to(m)
     
-    # Add enhanced legend
+    # ENHANCED legend with time and safety information
     legend_html = f'''
     <div style="position: fixed; 
                 top: 10px; right: 10px; width: 280px; height: auto; 
                 background: white; border: 2px solid #ccc; z-index:9999; 
                 font-size: 13px; padding: 12px; border-radius: 8px;
                 box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-    <p style="margin: 0 0 10px 0; font-weight: bold; color: #333;">🗺️ Route Options - {travel_mode.title()} Mode</p>
-    <p style="margin: 3px 0;"><span style="color:#00FF00; font-size: 16px;">●</span> Safe Route (Avoids Crime Zones)</p>
-    <p style="margin: 3px 0;"><span style="color:#FFA500; font-size: 16px;">●</span> Balanced Route</p>
-    <p style="margin: 3px 0;"><span style="color:#FF0000; font-size: 16px;">●</span> Direct Route (May Pass Crime Zones)</p>
+    <p style="margin: 0 0 10px 0; font-weight: bold; color: #333;">🗺️ Smart Route Options - {travel_mode.title()}</p>
+    <p style="margin: 2px 0; font-size: 11px;"><b>Time:</b> {time_of_travel}</p>
+    <p style="margin: 2px 0; font-size: 11px;"><b>Safety:</b> {safety_priority.replace("_", " ").title()}</p>
+    <hr style="margin: 8px 0; border: 1px solid #eee;">
+    <p style="margin: 3px 0;"><span style="color:#00AA00; font-size: 16px;">●</span> Safe Route (Avoids Crime Zones)</p>
+    <p style="margin: 3px 0;"><span style="color:#FF8C00; font-size: 16px;">●</span> Moderate Risk Route</p>
+    <p style="margin: 3px 0;"><span style="color:#DC143C; font-size: 16px;">●</span> High Risk Route</p>
     <hr style="margin: 10px 0; border: 1px solid #eee;">
     <p style="margin: 0 0 6px 0; font-weight: bold; color: #333;">🚨 Crime Risk Zones:</p>
     <p style="margin: 2px 0;"><span style="color:#FF0000; font-size: 14px;">●</span> High Crime Risk</p>
     <p style="margin: 2px 0;"><span style="color:#FFA500; font-size: 14px;">●</span> Medium Crime Risk</p>
     <p style="margin: 2px 0;"><span style="color:#00FF00; font-size: 14px;">●</span> Low Crime Risk</p>
-    <hr style="margin: 10px 0; border: 1px solid #eee;">
-    <p style="margin: 0; font-size: 11px; color: #666;">🆓 Free OSRM Routing</p>
     </div>
     '''
     m.get_root().html.add_child(folium.Element(legend_html))
     
-    # Add layer control
+    # Add layer control - ORIGINAL
     folium.LayerControl(position='topleft').add_to(m)
     
-    return m
+    return m, route_metadata
 
-# ================= ROUTE ANALYSIS =================
-def analyze_route_safety(routes_data, crime_df, safety_priority="balanced"):
+# ================= ENHANCED ROUTE ANALYSIS =================
+def analyze_route_safety(routes_data, crime_df, safety_priority="balanced", time_of_travel="Any Time"):
     """Analyze route safety and provide intelligent recommendations"""
     
     if not routes_data:
@@ -440,9 +488,14 @@ def analyze_route_safety(routes_data, crime_df, safety_priority="balanced"):
     
     for route_type, route_coords in routes_data.items():
         if route_coords:
-            score, details = score_route_safety(route_coords, crime_df)
-            route_scores[route_type] = score
-            route_details[route_type] = details
+            exposure = analyze_route_crime_exposure(route_coords, crime_df)
+            safety_level, _ = determine_route_safety_level(exposure)
+            
+            route_scores[route_type] = exposure["high_crime_percentage"]
+            route_details[route_type] = {
+                "exposure": exposure,
+                "safety_level": safety_level
+            }
     
     if not route_scores:
         return "No routes could be analyzed", "medium"
@@ -451,74 +504,42 @@ def analyze_route_safety(routes_data, crime_df, safety_priority="balanced"):
     safest_route = min(route_scores.keys(), key=lambda x: route_scores[x])
     safest_score = route_scores[safest_route]
     
-    # Count available routes and check if they are significantly different
-    available_routes = len([r for r in routes_data.values() if r])
+    # Check available safety levels
+    safety_levels = [details["safety_level"] for details in route_details.values()]
+    has_safe = "low_risk" in safety_levels
+    has_medium = "medium_risk" in safety_levels
+    has_risky = "high_risk" in safety_levels
     
-    # Check if routes are essentially the same (for maximum safety scenario)
-    if safety_priority == "maximum_safety" and available_routes > 1:
-        # Compare routes to see if they are substantially different
-        route_coords_list = [coords for coords in routes_data.values() if coords]
-        
-        if len(route_coords_list) >= 2:
-            # Simple check: if start and end points are very similar, routes might be the same
-            are_routes_similar = True
-            base_route = route_coords_list[0]
-            
-            for other_route in route_coords_list[1:]:
-                if len(other_route) != len(base_route):
-                    are_routes_similar = False
-                    break
-                
-                # Check if coordinates differ significantly
-                for i in range(min(len(base_route), len(other_route))):
-                    if abs(base_route[i][0] - other_route[i][0]) > 0.001 or abs(base_route[i][1] - other_route[i][1]) > 0.001:
-                        are_routes_similar = False
-                        break
-                
-                if not are_routes_similar:
-                    break
-            
-            # If maximum safety selected but routes are essentially the same
-            if are_routes_similar:
-                return "No alternate routes available. This is the only available route despite the safety level. Consider changing your area.", "warning"
-    
-    # Determine risk level and message
-    if available_routes == 1:
-        return "This is the only route available irrespective of the safety level.", "info"
-    
-    elif safest_score < 10:  # Low risk
-        return "It is safe to travel on this route. No significant crime zones detected around these areas.", "success"
-    
-    elif safest_score < 20:  # Medium risk
-        return "This route passes through some medium-risk areas. Exercise normal caution while traveling.", "warning"
-    
-    else:  # High risk
+    # Generate contextual message
+    if has_safe and safest_score < 3:
+        return "✅ Excellent! Safe routes found with minimal crime zone exposure.", "success"
+    elif has_safe:
+        return "✅ Safe routes available! The green route avoids high-crime areas effectively.", "success"
+    elif has_medium and not has_risky:
+        return f"⚠️ Routes pass through some crime zones ({safest_score:.1f}% high-risk exposure). Exercise normal caution.", "warning"
+    elif has_medium and has_risky:
+        return f"⚠️ This route passes through medium to high crime risk zones. Be aware while travelling.", "warning"
+    elif has_risky:
         if safety_priority == "maximum_safety":
-            return "No alternate routes available. This is the only available route despite the safety level. Consider changing your area.", "warning"
+            return "🚨 No safe routes available for maximum safety settings. Consider different areas or times.", "error"
         else:
-            return "This is the shortest route but has high crime risk. It is recommended to change to a safer route. You can change the route safety level to maximum safety to generate a safer route.", "error"
-
-def get_risk_level_text(score):
-    """Convert numeric risk score to text description"""
-    if score < 10:
-        return "Low Risk"
-    elif score < 20:
-        return "Medium Risk"
+            return f"🚨 High crime risk detected ({safest_score:.1f}% exposure). Consider alternative routes or travel times.", "error"
     else:
-        return "High Risk"
+        return "ℹ️ Route analysis completed. Review individual route safety details below.", "info"
 
-# ================= MAIN COMPUTATION FUNCTION =================
-def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", force_safe_route=False, api_keys=None, safety_priority="balanced"):
-    """Enhanced route computation with Google Maps-like experience"""
+# ================= MAIN COMPUTATION FUNCTION WITH ORIGINAL ROUTING =================
+def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", force_safe_route=False, 
+                                 api_keys=None, safety_priority="balanced", time_of_travel="Any Time"):
+    """Enhanced route computation with ORIGINAL Google Maps-style routing + enhanced safety analysis"""
     
     try:
-        # Load crime data
-        crime_df = load_crime_data_simple()
+        # Load crime data with time filtering - ENHANCED
+        crime_df = load_crime_data_with_time_filter(time_of_travel)
         if crime_df is None:
             st.error("Could not load crime data")
             return False
         
-        # Get coordinates for areas
+        # Get coordinates for areas - ORIGINAL
         start_data = crime_df[crime_df['AREA NAME'] == start_area][['LAT', 'LON']].dropna()
         end_data = crime_df[crime_df['AREA NAME'] == end_area][['LAT', 'LON']].dropna()
         
@@ -526,31 +547,45 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", 
             st.error(f"No coordinate data found for {start_area} or {end_area}")
             return False
         
-        # Get center coordinates
+        # Get center coordinates - ORIGINAL
         start_coords = start_data.mean()
         end_coords = end_data.mean()
         start_lat, start_lon = float(start_coords['LAT']), float(start_coords['LON'])
         end_lat, end_lon = float(end_coords['LAT']), float(end_coords['LON'])
         
-        # Try to get real routes from free OSRM server
+        # ORIGINAL: Try to get real routes from free OSRM server
         routes, route_info = get_free_osrm_routes((start_lat, start_lon), (end_lat, end_lon), travel_mode)
         
-        # Fallback to simulated routes if OSRM fails
+        # ORIGINAL: Fallback to simulated routes if OSRM fails
         if routes is None:
             routes = generate_simulated_routes((start_lat, start_lon), (end_lat, end_lon), travel_mode)
             route_info = None
         
-        # Score route safety
-        route_scores = {}
-        for route_type, route_coords in routes.items():
-            if route_coords:
-                score, _ = score_route_safety(route_coords, crime_df)
-                route_scores[route_type] = score
+        # ENHANCED: Filter routes based on safety priority
+        if safety_priority == "maximum_safety":
+            # Analyze routes and keep only safe ones
+            filtered_routes = {}
+            for route_type, route_coords in routes.items():
+                if route_coords:
+                    exposure = analyze_route_crime_exposure(route_coords, crime_df)
+                    safety_level, _ = determine_route_safety_level(exposure)
+                    
+                    # Only keep low and medium risk routes for maximum safety
+                    if safety_level in ["low_risk", "medium_risk"]:
+                        filtered_routes[route_type] = route_coords
+            
+            routes = filtered_routes if filtered_routes else routes
         
-        # Analyze route safety with safety_priority parameter
-        safety_message, safety_level = analyze_route_safety(routes, crime_df, safety_priority)
+        elif safety_priority == "speed_priority":
+            # Show all routes including risky ones - no filtering
+            pass
         
-        # Display safety message
+        # For balanced, show all routes (original behavior)
+        
+        # ENHANCED: Analyze route safety with safety_priority parameter
+        safety_message, safety_level = analyze_route_safety(routes, crime_df, safety_priority, time_of_travel)
+        
+        # Display safety message - ENHANCED
         if safety_level == "success":
             st.success(safety_message)
         elif safety_level == "warning":
@@ -560,21 +595,21 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", 
         else:
             st.info(safety_message)
         
-        # Create and display enhanced map
-        map_obj = create_enhanced_map(
+        # ORIGINAL + ENHANCED: Create and display enhanced map with original routing
+        map_obj, route_metadata = create_enhanced_map(
             routes, crime_df, 
             (start_lat, start_lon), (end_lat, end_lon), 
-            travel_mode, route_info
+            travel_mode, time_of_travel, safety_priority, route_info
         )
         
-        # Display map
+        # Display map - ORIGINAL
         st_folium(map_obj, width=900, height=600, returned_objects=[])
         
-        # Display travel time and distance information
+        # ORIGINAL: Display travel time and distance information
         st.markdown("### ⏱️ Travel Time & Distance")
         
         if route_info:
-            # Use real data from OSRM
+            # Use real data from OSRM - ORIGINAL
             time_distance_cols = st.columns(3)
             
             for i, info in enumerate(route_info[:3]):
@@ -588,7 +623,7 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", 
                         delta=f"📏 {info.get('distance', 'N/A')}"
                     )
         else:
-            # Calculate estimated times based on travel mode for simulated routes
+            # Calculate estimated times based on travel mode for simulated routes - ORIGINAL
             if routes:
                 # Calculate base distance (rough estimate)
                 import math
@@ -596,7 +631,7 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", 
                 lon_diff = end_lon - start_lon
                 distance_km = math.sqrt(lat_diff**2 + lon_diff**2) * 111  # Rough conversion to km
                 
-                # Travel mode speeds (km/h)
+                # Travel mode speeds (km/h) - ORIGINAL
                 speeds = {
                     "driving": 50,    # Urban driving speed
                     "walking": 5,     # Average walking speed
@@ -622,22 +657,22 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", 
                             delta=f"📏 {estimated_distance:.1f} km"
                         )
         
-        # Add travel mode comparison
+        # ORIGINAL: Add travel mode comparison
         st.markdown("### 🚗🚶🚴 Travel Mode Comparison")
         
         if route_info and len(route_info) > 0:
-            # Use the balanced route as reference
+            # Use the balanced route as reference - ORIGINAL
             base_duration = route_info[0].get('duration_seconds', 3600)
             base_distance = route_info[0].get('distance_meters', 10000)
         else:
-            # Estimate from coordinates
+            # Estimate from coordinates - ORIGINAL
             import math
             lat_diff = end_lat - start_lat
             lon_diff = end_lon - start_lon
             base_distance = math.sqrt(lat_diff**2 + lon_diff**2) * 111000  # Convert to meters
             base_duration = 3600  # 1 hour default
         
-        # Calculate times for different modes
+        # Calculate times for different modes - ORIGINAL
         mode_factors = {
             "driving": {"time": 1.0, "icon": "🚗"},
             "cycling": {"time": 3.0, "icon": "🚴"},
@@ -669,92 +704,77 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", 
         
         st.markdown("*Times are estimates and may vary based on traffic, weather, and route conditions.*")
         
-        # Risk Score Legend
-        st.markdown("### 📊 Risk Score Legend")
+        # ENHANCED: Display route analysis with crime exposure
+        if routes and route_metadata:
+            st.markdown("### 📊 Enhanced Route Safety Analysis")
+            
+            route_cols = st.columns(len(routes))
+            
+            for i, (route_type, route_coords) in enumerate(routes.items()):
+                if route_type in route_metadata:
+                    metadata = route_metadata[route_type]
+                    exposure = metadata["exposure"]
+                    safety_level = metadata["safety_level"]
+                    
+                    with route_cols[i]:
+                        # Display with accurate safety assessment
+                        if safety_level == "low_risk":
+                            st.success("🟢 **Safe Route**")
+                            recommendation = "✅ Recommended for safe travel"
+                        elif safety_level == "medium_risk":
+                            st.warning("🟡 **Moderate Risk Route**")
+                            recommendation = "⚠️ Use caution, some crime exposure"
+                        else:
+                            st.error("🔴 **High Risk Route**")
+                            recommendation = "🚨 Not recommended - significant crime exposure"
+                        
+                        # Display exposure metrics
+                        st.metric("High Crime Exposure", f"{exposure['high_crime_percentage']:.1f}%")
+                        st.metric("Safe Segments", f"{exposure['total_segments'] - exposure['high_crime_exposure']}/{exposure['total_segments']}")
+                        
+                        st.write(f"**{recommendation}**")
+        
+        # ORIGINAL: Risk Score Legend
+        st.markdown("### 📊 Route Safety Guide")
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.success("**Low Risk (0-9)**\nSafe areas with minimal crime activity")
+            st.success("**🟢 Safe Routes**\nMinimal crime zone exposure (<5%)")
         with col2:
-            st.warning("**Medium Risk (10-19)**\nModerate crime activity, exercise caution")
+            st.warning("**🟡 Moderate Routes**\nSome crime zone exposure (5-15%)")
         with col3:
-            st.error("**High Risk (20+)**\nHigh crime activity, consider safer alternatives")
+            st.error("**🔴 High Risk Routes**\nSignificant crime exposure (>15%)")
         
-        # Display route scores with clear explanations
-        if route_scores:
-            st.markdown("### 🛣️ Route Risk Assessment")
-            st.markdown("*Each route is analyzed based on proximity to crime zones. Lower scores indicate safer routes.*")
-            
-            score_cols = st.columns(len(route_scores))
-            
-            for i, (route_type, score) in enumerate(route_scores.items()):
-                with score_cols[i]:
-                    route_name = route_type.replace("_", " ").title()
-                    risk_level = get_risk_level_text(score)
-                    
-                    # Create clear descriptions
-                    if route_type == "low_risk":
-                        route_description = "🟢 Safest Route"
-                        explanation = "Takes longer but avoids high-crime areas"
-                    elif route_type == "medium_risk":
-                        route_description = "🟡 Balanced Route"
-                        explanation = "Good balance of safety and travel time"
-                    else:
-                        route_description = "🔴 Fastest Route"
-                        explanation = "Shortest time but may pass crime zones"
-                    
-                    if score < 10:
-                        st.success(f"""
-                        **{route_description}**
-                        
-                        **Risk Level**: {risk_level}
-                        **Safety Score**: {score}/100
-                        
-                        *{explanation}*
-                        """)
-                    elif score < 20:
-                        st.warning(f"""
-                        **{route_description}**
-                        
-                        **Risk Level**: {risk_level}
-                        **Safety Score**: {score}/100
-                        
-                        *{explanation}*
-                        """)
-                    else:
-                        st.error(f"""
-                        **{route_description}**
-                        
-                        **Risk Level**: {risk_level}
-                        **Safety Score**: {score}/100
-                        
-                        *{explanation}*
-                        """)
+        # ENHANCED: Safety tips with time-awareness
+        st.markdown(f"### 🛡️ Safety Tips for {travel_mode.title()} Travel")
         
-        # Driving safety tips
-        st.markdown(f"### 🛡️ {travel_mode.title()} Safety Tips")
+        # Time-specific advice
+        if "Night" in time_of_travel:
+            st.warning(f"🌙 **Night Travel Warning ({time_of_travel})**: Crime rates are typically higher at night. Extra precautions recommended.")
+        elif "Evening" in time_of_travel:
+            st.info(f"🌆 **Evening Travel ({time_of_travel})**: Be extra vigilant during evening hours.")
+        elif "Morning" in time_of_travel:
+            st.success(f"☀️ **Morning Travel ({time_of_travel})**: Generally safest time period for travel.")
         
+        # ORIGINAL: Mode-specific safety tips
         mode_tips = {
             "driving": [
-                "🚗 Keep vehicle doors locked and windows up in high-crime areas",
-                "⛽ Plan fuel stops in well-lit, busy areas with good visibility", 
-                "📱 Use hands-free navigation to avoid distractions",
-                "🚨 If you feel unsafe, drive to the nearest police station",
-                "🅿️ Park in well-lit areas with security cameras when possible"
+                "🚗 Keep vehicle doors locked at all times",
+                "⛽ Plan fuel stops in well-lit, busy areas",
+                "📱 Use hands-free navigation to stay focused",
+                "🚨 If you feel unsafe, drive to the nearest police station"
             ],
             "walking": [
-                "👥 Walk in groups when possible, especially at night",
-                "🔦 Carry a flashlight and keep phone charged",
+                "👥 Walk with companions when possible",
+                "🔦 Carry a flashlight for evening walks",
                 "📱 Share your route and ETA with someone you trust",
-                "👀 Stay alert and avoid using headphones in unfamiliar areas",
-                "🏃‍♂️ Trust your instincts - if something feels wrong, leave immediately"
+                "👀 Stay alert and avoid distractions like headphones"
             ],
             "cycling": [
                 "🚴‍♂️ Wear bright, reflective clothing for visibility",
                 "🛡️ Always wear a properly fitted helmet",
                 "🚲 Use designated bike lanes when available",
-                "💡 Use front and rear lights during low visibility conditions",
-                "🔒 Secure your bike with a high-quality lock when stopping"
+                "💡 Use front and rear lights during low visibility conditions"
             ]
         }
         
@@ -772,16 +792,15 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", 
 def get_system_info():
     """Get information about the enhanced routing system"""
     return {
-        "routing_api": "OSRM Public Server (Free)",
-        "map_provider": "Enhanced Folium with Crime Analysis",
+        "routing_system": "Google Maps-Style + Enhanced Crime Analysis",
         "features": [
-            "Google Maps-like real road routing",
-            "Crime-aware route analysis", 
-            "Multi-modal travel optimization",
-            "Risk-based route coloring",
-            "Intelligent safety recommendations",
-            "Completely free with no setup required"
+            "Original Google Maps-like road routing",
+            "Real OSRM server integration",
+            "Time-of-day crime pattern filtering",
+            "Dynamic route safety classification",
+            "Safety-priority based route filtering",
+            "Accurate crime exposure calculation"
         ],
-        "backup": "Enhanced simulation routing",
-        "cost": "Free forever"
+        "routing_method": "OSRM public server with simulated fallback",
+        "safety_analysis": "AI-powered crime zone proximity analysis"
     }
