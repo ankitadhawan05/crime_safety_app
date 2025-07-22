@@ -227,6 +227,9 @@ Women: {stats['f_pct']}% ({stats['f_count']}) | Men: {stats['m_pct']}% ({stats['
 def run_clustering_ui():
     st.header("Check areas with Crime Hotspots")
     
+    # Add informational message about police stations
+    st.info("💡 **Tip:** To view the list of police stations near crime risk zones and the full stations directory, click on **Crime Alerts** in the sidebar.")
+    
     # Initialize session state
     if "clustered_data" not in st.session_state:
         st.session_state.clustered_data = None
@@ -245,7 +248,7 @@ def run_clustering_ui():
         st.error(f"Data preprocessing issue: Original data has {len(df)} rows, encoded data has {len(df_encoded)} rows")
         st.stop()
     
-    # Filters - simplified without session state conflicts
+    # Filters - simplified layout
     col1, col2 = st.columns(2)
     
     with col1:
@@ -262,10 +265,6 @@ def run_clustering_ui():
             default=['M', 'F', 'Others']
         )
     
-    # Clear filters button
-    if st.button("Clear Filters"):
-        st.rerun()
-    
     # Apply filters and get indices
     filter_mask = (
         (df['Time of Day'].isin(time_filter)) &
@@ -276,11 +275,11 @@ def run_clustering_ui():
         st.warning("No data available for selected filters.")
         return
     
-    # Get filtered indices - remove info message
+    # Get filtered indices
     filtered_indices = df[filter_mask].index.tolist()
     
-    # Clustering button
-    if st.button("View Clusters", type="primary"):
+    # Only the View Clusters button (Clear Filters button removed)
+    if st.button("View Clusters", type="primary", use_container_width=True):
         with st.spinner("Generating clusters..."):
             # Apply clustering to filtered data using indices
             clustered_data = apply_clustering_to_filtered_data(

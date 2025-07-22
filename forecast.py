@@ -36,6 +36,25 @@ def safe_strftime(date_val, format_str='%B %d, %Y'):
     except:
         return "Invalid Date"
 
+def safe_numeric_conversion(value, default=0):
+    """Safely convert values to numeric, handling NaN/None cases"""
+    try:
+        if pd.isna(value) or pd.isnull(value) or value is None:
+            return default
+        if np.isnan(value) or np.isinf(value):
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+def safe_int_conversion(value, default=0):
+    """Safely convert values to integer, handling NaN/None cases"""
+    numeric_val = safe_numeric_conversion(value, default)
+    try:
+        return int(numeric_val)
+    except (ValueError, TypeError, OverflowError):
+        return default
+
 def prepare_time_series(df, crime_type, frequency='M'):
     """
     Prepare time series data for forecasting
@@ -136,8 +155,30 @@ def get_forecast_dates(last_date, periods, frequency='M'):
         fallback_start = pd.Timestamp('2024-01-01')
         return pd.date_range(start=fallback_start, periods=periods, freq='MS')
 
+def clean_forecast_values(forecast_values):
+    """Clean forecast values by removing NaN, infinity, and negative values"""
+    try:
+        # Convert to numpy array for easier handling
+        if isinstance(forecast_values, pd.Series):
+            values = forecast_values.values
+        else:
+            values = np.array(forecast_values)
+        
+        # Replace NaN and infinity with 0
+        values = np.where(np.isnan(values) | np.isinf(values), 0, values)
+        
+        # Ensure non-negative values
+        values = np.maximum(values, 0)
+        
+        return values
+        
+    except Exception as e:
+        st.warning(f"Error cleaning forecast values: {str(e)}")
+        # Return array of zeros as fallback
+        return np.zeros(len(forecast_values))
+
 def forecast_crime(df, area_name=None, gender=None, top_n=10, months_ahead=6):
-    """Enhanced crime forecasting with proper date handling"""
+    """Enhanced crime forecasting with proper date handling and NaN management"""
     
     # Display forecast info
     st.write("### 🔮 AI Crime Forecast")
@@ -241,10 +282,18 @@ def forecast_crime(df, area_name=None, gender=None, top_n=10, months_ahead=6):
                     results = model.fit(disp=False, maxiter=50)
                 
                 # Generate forecast
-                forecast_values = results.forecast(steps=periods)
+                forecast_raw = results.forecast(steps=periods)
+                
+                # Clean forecast values to handle NaN/infinity
+                forecast_values = clean_forecast_values(forecast_raw)
                 
                 try:
-                    conf_int = results.get_forecast(steps=periods).conf_int()
+                    conf_int_raw = results.get_forecast(steps=periods).conf_int()
+                    # Clean confidence intervals
+                    conf_int = pd.DataFrame({
+                        'lower': clean_forecast_values(conf_int_raw.iloc[:, 0] if hasattr(conf_int_raw, 'iloc') else conf_int_raw['lower']),
+                        'upper': clean_forecast_values(conf_int_raw.iloc[:, 1] if hasattr(conf_int_raw, 'iloc') else conf_int_raw['upper'])
+                    })
                 except:
                     # Create dummy confidence intervals if they fail
                     conf_int = pd.DataFrame({
@@ -255,10 +304,6 @@ def forecast_crime(df, area_name=None, gender=None, top_n=10, months_ahead=6):
                 # Create forecast dates starting from next period after last data date
                 last_data_date = ts.index.max()
                 forecast_dates = get_forecast_dates(last_data_date, periods, frequency)
-                
-                # Ensure non-negative forecasts
-                forecast_values = np.maximum(forecast_values, 0)
-                conf_int = np.maximum(conf_int, 0)
                 
                 # Store results
                 forecast_series = pd.Series(forecast_values, index=forecast_dates)
@@ -292,7 +337,7 @@ def forecast_crime(df, area_name=None, gender=None, top_n=10, months_ahead=6):
                 try:
                     fig.add_trace(go.Scatter(
                         x=forecast_dates,
-                        y=conf_int.iloc[:, 1] if hasattr(conf_int, 'iloc') else conf_int['upper'],
+                        y=conf_int['upper'],
                         mode='lines',
                         name='Upper Confidence',
                         line=dict(color='rgba(255,0,0,0.2)', width=0),
@@ -301,7 +346,7 @@ def forecast_crime(df, area_name=None, gender=None, top_n=10, months_ahead=6):
                     
                     fig.add_trace(go.Scatter(
                         x=forecast_dates,
-                        y=conf_int.iloc[:, 0] if hasattr(conf_int, 'iloc') else conf_int['lower'],
+                        y=conf_int['lower'],
                         mode='lines',
                         name='Confidence Interval',
                         line=dict(color='rgba(255,0,0,0.2)', width=0),
@@ -336,29 +381,51 @@ def forecast_crime(df, area_name=None, gender=None, top_n=10, months_ahead=6):
     if forecast_figures:
         st.success(f"✅ Successfully generated forecasts for {len(forecast_figures)} crime types")
         
-        # Summary statistics
+        # Summary statistics with improved NaN handling
         with st.expander("📊 Forecast Summary"):
             summary_data = []
             for crime, forecast in forecasts.items():
                 try:
-                    total_forecast = forecast.sum()
-                    avg_period = forecast.mean()
-                    max_period = forecast.idxmax()
-                    max_value = forecast.max()
+                    # Clean forecast series to handle NaN values
+                    clean_forecast = forecast.fillna(0)  # Replace NaN with 0
+                    
+                    # Use safe conversion functions
+                    total_forecast = safe_int_conversion(clean_forecast.sum())
+                    avg_period = safe_numeric_conversion(clean_forecast.mean())
+                    
+                    # Find peak period safely
+                    if not clean_forecast.empty and clean_forecast.max() > 0:
+                        max_period = clean_forecast.idxmax()
+                        max_value = safe_int_conversion(clean_forecast.max())
+                        peak_period_str = safe_strftime(max_period, '%Y-%m-%d')
+                    else:
+                        peak_period_str = "No peak"
+                        max_value = 0
                     
                     summary_data.append({
                         'Crime Type': crime,
-                        'Total Predicted': int(total_forecast),
+                        'Total Predicted': total_forecast,
                         'Average per Period': f"{avg_period:.1f}",
-                        'Peak Period': safe_strftime(max_period, '%Y-%m-%d'),
-                        'Peak Value': int(max_value)
+                        'Peak Period': peak_period_str,
+                        'Peak Value': max_value
                     })
+                    
                 except Exception as e:
                     st.warning(f"Could not generate summary for {crime}: {str(e)}")
+                    # Add a fallback entry
+                    summary_data.append({
+                        'Crime Type': crime,
+                        'Total Predicted': 0,
+                        'Average per Period': "0.0",
+                        'Peak Period': "Unknown",
+                        'Peak Value': 0
+                    })
             
             if summary_data:
                 summary_df = pd.DataFrame(summary_data)
                 st.dataframe(summary_df, use_container_width=True)
+            else:
+                st.info("No summary data could be generated.")
     
     return forecast_figures
 
