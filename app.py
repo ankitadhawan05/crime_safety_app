@@ -23,6 +23,19 @@ except ImportError:
     def run_clustering_ui():
         st.error("Clustering module not available")
 
+# Import enhanced crime alerts system with official LAPD data
+try:
+    from crime_alerts import add_crime_alert_integration, show_crime_alerts_sidebar, run_crime_alerts_page
+    ALERTS_AVAILABLE = True
+except ImportError:
+    def add_crime_alert_integration():
+        pass
+    def show_crime_alerts_sidebar():
+        return 0
+    def run_crime_alerts_page():
+        st.error("Crime alerts system not available. Please ensure crime_alerts.py is in the project directory.")
+    ALERTS_AVAILABLE = False
+
 try:
     # Import the enhanced system
     from free_api_utils import compute_and_display_safe_route as enhanced_route
@@ -471,6 +484,10 @@ if "page" not in st.session_state:
 st.title("🛡️ Crime Safety Travel Assistant")
 st.markdown("*AI-powered crime analysis with intelligent route planning*")
 
+# ✅ Add crime alert integration with official LAPD data
+if ALERTS_AVAILABLE:
+    add_crime_alert_integration()
+
 # ✅ Handle page routing from clustering page
 def handle_page_routing():
     """Handle navigation between pages"""
@@ -493,13 +510,19 @@ if handle_page_routing():
     pass
 else:
     # ✅ Normal sidebar navigation
+    menu_options = [
+        "🧭 Crime Hotspot Clustering",
+        "🗺️ Safe Route Mapping", 
+        "📊 Crime Forecasting"
+    ]
+    
+    # Add crime alerts option if available
+    if ALERTS_AVAILABLE:
+        menu_options.append("🚨 Crime Alerts")
+    
     menu = st.sidebar.radio(
         "🧭 Choose Feature",
-        [
-            "🧭 Crime Hotspot Clustering",
-            "🗺️ Safe Route Mapping", 
-            "📊 Crime Forecasting"
-        ],
+        menu_options,
         help="Select the feature you want to use"
     )
 
@@ -528,6 +551,9 @@ else:
             st.markdown("### 📊 Crime Forecasting")
             st.markdown("Predict future crime trends using advanced AI forecasting models.")
             run_forecast()
+        
+        elif menu == "🚨 Crime Alerts" and ALERTS_AVAILABLE:
+            run_crime_alerts_page()
 
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
@@ -537,9 +563,10 @@ else:
             **Common Solutions:**
             
             1. **Refresh the page** - Fixes most temporary issues
-            2. **Check data files** - Ensure data/crime_data.parquet exists
+            2. **Check data files** - Ensure all required data files are in data/ folder
             3. **Try different areas** - Some may have limited data
             4. **Check dependencies** - Ensure required packages are installed
+            5. **LAPD Data** - Ensure LAPD_Police_Stations CSV is in data/ folder
             """)
 
 # ✅ Sidebar
@@ -564,11 +591,30 @@ else:
     ✅ Safety recommendations
     """)
 
+if ALERTS_AVAILABLE:
+    st.sidebar.success("""
+    **🚨 Crime Alerts** ✅
+    
+    ✅ Real-time crime notifications
+    ✅ Official LAPD station locator
+    ✅ Interactive alert map
+    ✅ Customizable alert settings
+    ✅ Data from geohub.lacity.org
+    """)
+
 st.sidebar.markdown("### 🚨 Emergency")
 st.sidebar.markdown("""
 - **Police**: 911
 - **Emergency**: 911
 - **Non-Emergency**: 311
+""")
+
+# ✅ Data source information
+st.sidebar.markdown("### 📊 Data Sources")
+st.sidebar.markdown("""
+- **Crime Data**: LA Crime Database
+- **Police Stations**: geohub.lacity.org
+- **Route Data**: OSRM/Free APIs
 """)
 
 # ✅ Current page indicator
@@ -583,11 +629,13 @@ st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center; color: #888;'>
-        🛡️ Crime Safety Travel Assistant | AI-Powered Route Planning with Crime Analysis
+        🛡️ Crime Safety Travel Assistant | AI-Powered Route Planning with Crime Analysis<br>
+        <small>Official LAPD Data from LA City GeoHub</small>
     </div>
     """, 
     unsafe_allow_html=True
 )
+
     
     
     

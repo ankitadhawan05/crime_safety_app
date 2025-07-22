@@ -355,10 +355,3 @@ def run_clustering_ui():
         if st.session_state.cluster_stats:
             generate_cluster_stats_optimized(st.session_state.cluster_stats)
 
-
-
-
-
-
-
-
