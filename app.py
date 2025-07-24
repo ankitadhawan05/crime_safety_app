@@ -262,36 +262,36 @@ try:
                             - Try different travel modes
                             """)
     
-    # Enhanced Area Analysis with better integration
+    # FIXED Enhanced Area Analysis with better integration
     def run_area_analysis():
-        """Enhanced Area Analysis with improved crime pattern visualization"""
-        st.markdown("### 📊 Enhanced Crime Analysis by Area")
-        st.markdown("**Analyze time-based crime patterns and get area-specific safety recommendations.**")
+        """Enhanced Area Analysis functionality with improved formatting and visualization"""
+        st.markdown("### 📊 Crime Analysis by Area")
         
-        # Load area data with enhanced processing
+        # Load area data
         @st.cache_data
-        def load_enhanced_crime_data_for_analysis():
+        def load_crime_data_for_analysis():
             try:
                 df = pd.read_parquet("data/crime_data.parquet")
                 df = df.dropna(subset=["LAT", "LON", "AREA NAME"])
                 
-                # Enhanced time processing
+                # Extract time of day from TIME OCC if not present
                 if 'Time of Day' not in df.columns and 'TIME OCC' in df.columns:
+                    # Convert TIME OCC to proper time format
                     df['TIME OCC'] = pd.to_numeric(df['TIME OCC'], errors='coerce')
                     df['Hour'] = (df['TIME OCC'] // 100).fillna(12).astype(int)
                     
-                    # Enhanced time categorization matching route system
-                    def enhanced_categorize_time(hour):
+                    # Create time of day categories
+                    def categorize_time(hour):
                         if 6 <= hour < 12:
                             return "Morning"
-                        elif 12 <= hour < 16:
+                        elif 12 <= hour < 18:
                             return "Afternoon"
-                        elif 16 <= hour < 18:
+                        elif 18 <= hour < 22:
                             return "Evening"
-                        else:  # 18-6 (night)
+                        else:
                             return "Night"
                     
-                    df['Time of Day'] = df['Hour'].apply(enhanced_categorize_time)
+                    df['Time of Day'] = df['Hour'].apply(categorize_time)
                 
                 # Enhanced crime severity classification (matching route system)
                 def classify_enhanced_crime_severity(row):
@@ -317,61 +317,32 @@ try:
                 
                 return df
             except Exception as e:
-                st.error(f"Error loading enhanced crime data: {e}")
+                st.error(f"Error loading crime data: {e}")
                 return None
         
-        crime_df = load_enhanced_crime_data_for_analysis()
+        crime_df = load_crime_data_for_analysis()
         
         if crime_df is None:
-            st.error("Could not load crime data for enhanced analysis.")
+            st.error("Could not load crime data for analysis.")
             return
         
         unique_areas = sorted(crime_df["AREA NAME"].unique())
         
-        # Enhanced selection interface
-        col1, col2, col3 = st.columns([2, 1, 1])
+        col1, col2 = st.columns([2, 1])
         
         with col1:
-            selected_area = st.selectbox("🏘️ Select Area for Enhanced Analysis", unique_areas, key="enhanced_analysis_area")
+            selected_area = st.selectbox("🏘️ Select Area for Analysis", unique_areas, key="analysis_area")
         
         with col2:
-            # Time-based analysis matching route system
-            time_filter = st.selectbox("⏰ Time Period Analysis", 
-                ["All Times", "Morning (6-12)", "Afternoon (12-16)", "Evening (16-18)", "Night (18-6)"])
-        
-        with col3:
-            # Risk level filter
-            risk_filter = st.selectbox("🚨 Risk Level Filter",
-                ["All Risks", "High Risk", "Medium Risk", "Low Risk"])
+            analysis_timeframe = st.selectbox("📅 Time Period", 
+                ["All Time", "Last Year", "Last 6 Months", "Last 3 Months"])
         
         if selected_area:
-            # Filter data for selected area and criteria
-            area_data = crime_df[crime_df["AREA NAME"] == selected_area].copy()
-            
-            # Apply time filter
-            if time_filter != "All Times":
-                time_mapping = {
-                    "Morning (6-12)": "Morning",
-                    "Afternoon (12-16)": "Afternoon", 
-                    "Evening (16-18)": "Evening",
-                    "Night (18-6)": "Night"
-                }
-                target_time = time_mapping.get(time_filter)
-                if target_time and 'Time of Day' in area_data.columns:
-                    area_data = area_data[area_data['Time of Day'] == target_time]
-            
-            # Apply risk filter
-            if risk_filter != "All Risks" and 'Risk Level' in area_data.columns:
-                area_data = area_data[area_data['Risk Level'] == risk_filter]
+            # Filter data for selected area
+            area_data = crime_df[crime_df["AREA NAME"] == selected_area]
             
             if not area_data.empty:
-                # Enhanced metrics with risk-aware analysis
-                st.markdown(f"#### 📊 Enhanced Analysis: {selected_area}")
-                if time_filter != "All Times":
-                    st.markdown(f"**Time Period:** {time_filter}")
-                if risk_filter != "All Risks":
-                    st.markdown(f"**Risk Level:** {risk_filter}")
-                
+                # Key metrics with improved formatting
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
@@ -384,110 +355,199 @@ try:
                         <div style="color: #262730; font-size: 18px; font-weight: 700; line-height: 1.2;">
                             {total_incidents:,}
                         </div>
-                        <div style="color: #666; font-size: 11px;">
-                            {time_filter} • {risk_filter}
-                        </div>
                     </div>
                     """, unsafe_allow_html=True)
                 
                 with col2:
-                    # Enhanced risk distribution
-                    if 'Risk Level' in area_data.columns:
-                        risk_counts = area_data['Risk Level'].value_counts()
-                        high_risk_pct = (risk_counts.get('High Risk', 0) / len(area_data) * 100) if len(area_data) > 0 else 0
+                    if 'Vict Sex' in area_data.columns:
+                        # Clean and categorize victim sex data into exactly 3 categories
+                        victim_sex_cleaned = area_data['Vict Sex'].fillna('Others').str.upper().str.strip()
                         
-                        risk_color = "#ff4b4b" if high_risk_pct > 25 else "#ffa500" if high_risk_pct > 10 else "#00cc44"
-                        risk_level_text = "High" if high_risk_pct > 25 else "Medium" if high_risk_pct > 10 else "Low"
+                        # Map all variations to 3 categories only
+                        def categorize_victim_sex(sex):
+                            if sex in ['M', 'MALE']:
+                                return 'Male'
+                            elif sex in ['F', 'FEMALE']:
+                                return 'Female'
+                            else:  # X, H, -, NaN, Others, etc.
+                                return 'Others'
+                        
+                        victim_sex_final = victim_sex_cleaned.apply(categorize_victim_sex)
+                        
+                        # Get most common victim category
+                        most_common_victim = victim_sex_final.mode()[0] if not victim_sex_final.mode().empty else "N/A"
                         
                         st.markdown(f"""
-                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid {risk_color};">
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #9467bd;">
                             <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
-                                🚨 Area Risk Level
+                                👥 Most Affected
                             </div>
                             <div style="color: #262730; font-size: 18px; font-weight: 700; line-height: 1.2;">
-                                {risk_level_text}
-                            </div>
-                            <div style="color: #666; font-size: 11px;">
-                                {high_risk_pct:.1f}% High Risk Crimes
+                                {most_common_victim}
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
                 
                 with col3:
-                    # Enhanced time analysis
                     if 'Time of Day' in area_data.columns:
                         peak_time = area_data['Time of Day'].mode()[0] if not area_data['Time of Day'].mode().empty else "N/A"
                         
-                        time_color = "#ff4b4b" if peak_time == "Night" else "#ffa500" if peak_time == "Evening" else "#00cc44"
-                        
                         st.markdown(f"""
-                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid {time_color};">
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #ff7f0e;">
                             <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
                                 ⏰ Peak Crime Time
                             </div>
                             <div style="color: #262730; font-size: 18px; font-weight: 700; line-height: 1.2;">
                                 {peak_time}
                             </div>
-                            <div style="color: #666; font-size: 11px;">
-                                Most incidents occur
-                            </div>
                         </div>
                         """, unsafe_allow_html=True)
                 
                 with col4:
-                    # Enhanced route recommendation
-                    if 'Risk Level' in area_data.columns and 'Time of Day' in area_data.columns:
-                        high_risk_count = len(area_data[area_data['Risk Level'] == 'High Risk'])
-                        night_crimes = len(area_data[area_data['Time of Day'] == 'Night'])
+                    if 'Crm Cd Desc' in area_data.columns:
+                        top_crime = area_data['Crm Cd Desc'].mode()[0] if not area_data['Crm Cd Desc'].mode().empty else "N/A"
+                        # Display full crime text with smaller font using HTML
+                        crime_text = str(top_crime)
                         
-                        if high_risk_count > len(area_data) * 0.3 or night_crimes > len(area_data) * 0.4:
-                            route_rec = "Avoid"
-                            rec_color = "#ff4b4b"
-                        elif high_risk_count > len(area_data) * 0.15:
-                            route_rec = "Caution"
-                            rec_color = "#ffa500"
-                        else:
-                            route_rec = "Safe"
-                            rec_color = "#00cc44"
-                        
+                        # Use HTML to make the text smaller and wrap if needed
                         st.markdown(f"""
-                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid {rec_color};">
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #ff4b4b;">
                             <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
-                                🛣️ Route Recommendation
+                                🚨 Most Common Crime
                             </div>
-                            <div style="color: #262730; font-size: 18px; font-weight: 700; line-height: 1.2;">
-                                {route_rec}
-                            </div>
-                            <div style="color: #666; font-size: 11px;">
-                                For route planning
+                            <div style="color: #262730; font-size: 11px; line-height: 1.2; word-wrap: break-word; font-weight: 500;">
+                                {crime_text}
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
                 
-                # Continue with existing detailed analysis...
-                # (Keep all your existing analysis code from here)
-                
-                # Enhanced detailed analysis
-                if st.button("📈 Show Enhanced Detailed Analysis", key="enhanced_detailed_analysis"):
+                # Detailed analysis
+                if st.button("📈 Show Detailed Analysis", key="detailed_analysis"):
                     st.markdown("---")
-                    st.subheader(f"🔍 Enhanced Analysis: {selected_area}")
+                    st.subheader(f"Detailed Analysis for {selected_area}")
                     
-                    # Enhanced risk breakdown
-                    if 'Risk Level' in area_data.columns:
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.markdown("#### 🚨 Crime Risk Distribution")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if 'Time of Day' in area_data.columns:
+                            st.markdown("#### 🕐 Crime Distribution by Time of Day")
+                            time_dist = area_data['Time of Day'].value_counts()
+                            st.bar_chart(time_dist)
+                    
+                    with col2:
+                        if 'Vict Sex' in area_data.columns:
+                            st.markdown("#### 👥 Victim Distribution by Gender")
+                            # Clean and categorize victim sex data into exactly 3 categories
+                            victim_sex_cleaned = area_data['Vict Sex'].fillna('Others').str.upper().str.strip()
+                            
+                            # Map all variations to 3 categories only
+                            def categorize_victim_sex(sex):
+                                if sex in ['M', 'MALE']:
+                                    return 'Male'
+                                elif sex in ['F', 'FEMALE']:
+                                    return 'Female'
+                                else:  # X, H, -, NaN, Others, etc.
+                                    return 'Others'
+                            
+                            victim_sex_final = victim_sex_cleaned.apply(categorize_victim_sex)
+                            
+                            # Create clean distribution with exactly 3 categories
+                            gender_dist = victim_sex_final.value_counts()
+                            st.bar_chart(gender_dist)
+                    
+                    # Add victim distribution by age group
+                    col3, col4 = st.columns(2)
+                    
+                    with col3:
+                        if 'Vict Age' in area_data.columns:
+                            st.markdown("#### 👶👦👨👴 Victim Distribution by Age Group")
+                            
+                            # Clean age data and convert to numeric
+                            victim_ages = pd.to_numeric(area_data['Vict Age'], errors='coerce')
+                            
+                            # Define age group categorization function (only for valid ages)
+                            def categorize_age_group(age):
+                                if pd.isna(age) or age < 0 or age > 120:  # Filter out invalid ages
+                                    return None  # Will be filtered out
+                                elif age < 12:
+                                    return 'Children (0-11)'
+                                elif age < 18:
+                                    return 'Adolescents (12-17)'
+                                elif age < 40:
+                                    return 'Adults (18-39)'
+                                elif age < 60:
+                                    return 'Middle-aged (40-59)'
+                                else:
+                                    return 'Elderly (60+)'
+                            
+                            # Apply age group categorization and filter out invalid ages
+                            age_groups = victim_ages.apply(categorize_age_group)
+                            age_groups_valid = age_groups.dropna()  # Remove None values (invalid ages)
+                            
+                            # Create age group distribution (only valid ages)
+                            age_dist = age_groups_valid.value_counts()
+                            
+                            # Reorder for logical display (youngest to oldest)
+                            desired_order = ['Children (0-11)', 'Adolescents (12-17)', 'Adults (18-39)', 
+                                           'Middle-aged (40-59)', 'Elderly (60+)']
+                            age_dist_ordered = age_dist.reindex([cat for cat in desired_order if cat in age_dist.index])
+                            
+                            st.bar_chart(age_dist_ordered)
+                    
+                    with col4:
+                        # Add some statistics about age distribution
+                        if 'Vict Age' in area_data.columns:
+                            st.markdown("#### 📊 Age Group Statistics")
+                            
+                            # Calculate statistics
+                            victim_ages_clean = pd.to_numeric(area_data['Vict Age'], errors='coerce')
+                            valid_ages = victim_ages_clean.dropna()
+                            valid_ages = valid_ages[(valid_ages >= 0) & (valid_ages <= 120)]  # Filter realistic ages
+                            
+                            if len(valid_ages) > 0:
+                                avg_age = valid_ages.mean()
+                                median_age = valid_ages.median()
+                                # Use only valid age groups for most vulnerable calculation
+                                most_vulnerable_group = age_groups_valid.value_counts().index[0] if len(age_groups_valid.value_counts()) > 0 else "No data"
+                                
+                                st.markdown(f"""
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #17a2b8;">
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>📈 Average Age:</strong> {avg_age:.1f} years
+                                    </div>
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>📊 Median Age:</strong> {median_age:.0f} years
+                                    </div>
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>🎯 Most Affected Group:</strong><br>
+                                        <span style="color: #dc3545; font-weight: 600;">{most_vulnerable_group}</span>
+                                    </div>
+                                    <div style="font-size: 11px; color: #6c757d; margin-top: 10px;">
+                                        Based on {len(valid_ages):,} valid age records
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            else:
+                                st.info("No valid age data available for analysis")
+                        else:
+                            st.info("Age data not available in this dataset")
+                    
+                    # Add Crime Risk Levels Distribution Chart - FIXED VERSION
+                    col5, col6 = st.columns(2)
+                    
+                    with col5:
+                        if 'Risk Level' in area_data.columns:
+                            st.markdown("#### 🚨 Crime Risk Levels Distribution")
                             risk_dist = area_data['Risk Level'].value_counts()
                             
-                            # Create enhanced risk chart
+                            # Create enhanced risk chart with colors - ONLY PERCENTAGES
                             risk_colors = {'High Risk': '#ff4b4b', 'Medium Risk': '#ffa500', 'Low Risk': '#00cc44'}
                             fig_risk = go.Figure(data=[
                                 go.Bar(
                                     x=risk_dist.index,
                                     y=risk_dist.values,
                                     marker_color=[risk_colors.get(risk, '#cccccc') for risk in risk_dist.index],
-                                    text=[f"{count}<br>({count/len(area_data)*100:.1f}%)" for count in risk_dist.values],
+                                    text=[f"{count/len(area_data)*100:.1f}%" for count in risk_dist.values],
                                     textposition='auto'
                                 )
                             ])
@@ -501,76 +561,134 @@ try:
                             )
                             
                             st.plotly_chart(fig_risk, use_container_width=True)
-                        
-                        with col2:
-                            st.markdown("#### ⏰ Time vs Risk Analysis")
-                            if 'Time of Day' in area_data.columns:
-                                time_risk_crosstab = pd.crosstab(area_data['Time of Day'], area_data['Risk Level'])
-                                
-                                fig_time_risk = px.imshow(
-                                    time_risk_crosstab.values,
-                                    x=time_risk_crosstab.columns,
-                                    y=time_risk_crosstab.index,
-                                    aspect='auto',
-                                    color_continuous_scale='Reds',
-                                    title=f"Crime Risk by Time Period"
-                                )
-                                
-                                fig_time_risk.update_layout(height=400)
-                                st.plotly_chart(fig_time_risk, use_container_width=True)
                     
-                    # Enhanced safety recommendations based on analysis
-                    st.markdown("#### 🛡️ Enhanced Safety Recommendations")
-                    
-                    if 'Risk Level' in area_data.columns and 'Time of Day' in area_data.columns:
-                        high_risk_times = area_data[area_data['Risk Level'] == 'High Risk']['Time of Day'].value_counts()
-                        
-                        if len(high_risk_times) > 0:
-                            worst_time = high_risk_times.index[0]
-                            worst_count = high_risk_times.iloc[0]
+                    with col6:
+                        st.markdown("#### 📊 Risk Level Statistics")
+                        if 'Risk Level' in area_data.columns:
+                            risk_counts = area_data['Risk Level'].value_counts()
+                            total_crimes = len(area_data)
                             
-                            if worst_time == "Night":
-                                st.error(f"""
-                                🌙 **HIGH RISK - NIGHT TRAVEL**
-                                - {worst_count} high-risk incidents during night hours
-                                - **Recommendation**: Avoid this area at night completely
-                                - If travel necessary, use only green routes from route planner
-                                - Consider alternative areas or daytime travel
-                                """)
-                            elif worst_time == "Evening":
-                                st.warning(f"""
-                                🌆 **MODERATE RISK - EVENING TRAVEL**
-                                - {worst_count} high-risk incidents during evening hours  
-                                - **Recommendation**: Use caution during evening travel
-                                - Prefer yellow or green routes from route planner
-                                - Complete travel before full darkness
-                                """)
+                            high_risk_pct = (risk_counts.get('High Risk', 0) / total_crimes * 100) if total_crimes > 0 else 0
+                            medium_risk_pct = (risk_counts.get('Medium Risk', 0) / total_crimes * 100) if total_crimes > 0 else 0
+                            low_risk_pct = (risk_counts.get('Low Risk', 0) / total_crimes * 100) if total_crimes > 0 else 0
+                            
+                            st.markdown(f"""
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #ff4b4b;">
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="color: #ff4b4b;">🔴 High Risk:</strong> {risk_counts.get('High Risk', 0):,} ({high_risk_pct:.1f}%)
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="color: #ffa500;">🟡 Medium Risk:</strong> {risk_counts.get('Medium Risk', 0):,} ({medium_risk_pct:.1f}%)
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="color: #00cc44;">🟢 Low Risk:</strong> {risk_counts.get('Low Risk', 0):,} ({low_risk_pct:.1f}%)
+                                </div>
+                                <div style="font-size: 11px; color: #6c757d; margin-top: 10px;">
+                                    Based on {total_crimes:,} total incidents
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # FIXED: PIE CHART FOR TOP 5 CRIMES
+                    if 'Crm Cd Desc' in area_data.columns:
+                        st.markdown("#### 🚨 Top 5 Crime Types Distribution")
+                        crime_types = area_data['Crm Cd Desc'].value_counts().head(5)
+                        
+                        # Calculate percentages
+                        total_crimes = len(area_data)
+                        crime_percentages = (crime_types / total_crimes * 100).round(1)
+                        
+                        # Create a pie chart for top 5 crimes
+                        crime_data_for_plot = pd.DataFrame({
+                            'Crime Type': crime_percentages.index,
+                            'Percentage': crime_percentages.values,
+                            'Count': crime_types.values
+                        })
+                        
+                        # Truncate long crime names for better display
+                        crime_data_for_plot['Crime Type'] = crime_data_for_plot['Crime Type'].apply(
+                            lambda x: x[:20] + "..." if len(str(x)) > 20 else str(x)
+                        )
+                        
+                        # Define colors for top 5 crimes
+                        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57']
+                        
+                        # Create the pie chart
+                        fig = go.Figure(data=[
+                            go.Pie(
+                                labels=crime_data_for_plot['Crime Type'],
+                                values=crime_data_for_plot['Percentage'],
+                                marker_colors=colors[:len(crime_data_for_plot)],
+                                textinfo='label+percent',
+                                textposition='auto',
+                                hovertemplate='<b>%{label}</b><br>' +
+                                            'Percentage: %{percent}<br>' +
+                                            'Count: %{customdata}<br>' +
+                                            '<extra></extra>',
+                                customdata=crime_data_for_plot['Count']
+                            )
+                        ])
+                        
+                        # Update layout for better readability
+                        fig.update_layout(
+                            title=f"Top 5 Crime Types in {selected_area}",
+                            font=dict(size=12),
+                            height=500,
+                            showlegend=True,
+                            legend=dict(
+                                orientation="v",
+                                yanchor="middle",
+                                y=0.5,
+                                xanchor="left",
+                                x=1.05
+                            )
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Area-specific safety recommendations
+                    st.markdown("#### 🛡️ Area-Specific Safety Tips")
+                    if 'Time of Day' in area_data.columns:
+                        peak_time = area_data['Time of Day'].mode()[0] if not area_data['Time of Day'].mode().empty else "Any Time"
+                        if peak_time == "Night":
+                            st.warning(f"🌙 **Peak crime time in {selected_area}**: Night hours. Avoid traveling through this area at night when possible.")
+                        elif peak_time == "Evening":
+                            st.info(f"🌆 **Peak crime time in {selected_area}**: Evening hours. Use extra caution during evening.")
+                        else:
+                            st.success(f"☀️ **Peak crime time in {selected_area}**: {peak_time}. Generally safer conditions.")
+                    
+                    # FIXED: Crime-Specific Precautions in ONE HIGHLIGHTED BOX
+                    if 'Crm Cd Desc' in area_data.columns:
+                        top_crimes = area_data['Crm Cd Desc'].value_counts().head(3)
+                        st.markdown("##### 🎯 Crime-Specific Precautions")
+                        
+                        # Create bullet points for crime-specific precautions
+                        precautions_list = []
+                        for i, (crime, count) in enumerate(top_crimes.items()):
+                            crime_lower = str(crime).lower()
+                            
+                            if any(word in crime_lower for word in ['theft', 'burglary', 'robbery']):
+                                precautions_list.append(f"🔒 **{crime}** ({count} incidents): Secure valuables, avoid displaying expensive items")
+                            elif any(word in crime_lower for word in ['assault', 'battery']):
+                                precautions_list.append(f"⚠️ **{crime}** ({count} incidents): Stay in well-lit areas, avoid isolated locations")
+                            elif any(word in crime_lower for word in ['vehicle', 'auto']):
+                                precautions_list.append(f"🚗 **{crime}** ({count} incidents): Park in secure areas, lock vehicles, remove valuables")
                             else:
-                                st.info(f"""
-                                ☀️ **DAYTIME RISK PRESENT**
-                                - {worst_count} high-risk incidents during {worst_time}
-                                - **Recommendation**: Standard safety precautions
-                                - Use route planner for safest paths
-                                - Stay alert during {worst_time} hours
-                                """)
-                    
-                    # Integration with route planning
-                    st.markdown("#### 🗺️ Route Planning Integration")
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button(f"🛣️ Plan Safe Routes FROM {selected_area}", key="plan_from"):
-                            st.session_state.route_start = selected_area
-                            st.success(f"✅ Set {selected_area} as starting point. Go to Route Planning tab to select destination.")
-                    
-                    with col2:
-                        if st.button(f"🎯 Plan Safe Routes TO {selected_area}", key="plan_to"):
-                            st.session_state.route_end = selected_area
-                            st.success(f"✅ Set {selected_area} as destination. Go to Route Planning tab to select starting point.")
+                                precautions_list.append(f"📊 **{crime}** ({count} incidents): Stay alert and follow general safety precautions")
+                        
+                        # Display all precautions in one highlighted box with bullet points
+                        precautions_html = "<br>".join([f"• {precaution}" for precaution in precautions_list])
+                        
+                        st.markdown(f"""
+                        <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 10px 0;">
+                            <div style="color: #856404; font-size: 14px; line-height: 1.6;">
+                                {precautions_html}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
             
             else:
-                st.info(f"No data available for {selected_area} with current filters.")
-                st.markdown("**Try adjusting the filters above or selecting a different area.**")
+                st.info(f"No crime data available for {selected_area}")
     
     ENHANCED_AVAILABLE = True
     
