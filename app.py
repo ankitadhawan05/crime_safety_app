@@ -45,26 +45,7 @@ try:
         st.markdown("### 🗺️ Smart Crime-Aware Route Planning")
         st.markdown("**AI-powered routing that adapts to real crime patterns and time-of-day risk levels.**")
         
-        # Enhanced explanation of new features
-        with st.expander("🆕 What's New - Dynamic Crime Analysis", expanded=False):
-            st.markdown("""
-            ### 🎯 Enhanced Route Intelligence
-            
-            **🎨 Dynamic Route Colors (NEW):**
-            - 🟢 **Green Routes**: <5% passes through high-crime areas  
-            - 🟡 **Yellow Routes**: 5-15% passes through high-crime areas
-            - 🔴 **Red Routes**: >15% passes through high-crime areas
-            
-            **⏰ Time-Aware Analysis (NEW):**
-            - Crime patterns change throughout the day
-            - Routes adapt to morning/afternoon/evening/night patterns
-            - Same area may have different risk levels at different times
-            
-            **🛡️ Smart Safety Filtering (NEW):**
-            - **Maximum Safety**: Only shows green and yellow routes
-            - **Balanced**: Shows all route types with intelligent recommendations
-            - **Speed Priority**: Shows all routes including risky ones with warnings
-            """)
+
         
         # Load area data
         @st.cache_data
@@ -152,23 +133,6 @@ try:
                 st.warning("⚠️ Please select different start and destination areas.")
             else:
                 # Show what the enhanced system will do
-                with st.expander("🧠 Enhanced AI Analysis Process", expanded=False):
-                    st.markdown(f"""
-                    **🔍 What the Enhanced System is Doing:**
-                    
-                    1. **📊 Loading Crime Data**: Filtering for **{time_of_travel}** patterns
-                    2. **🎯 Crime Severity Analysis**: Classifying crimes by severity (High/Medium/Low)
-                    3. **🛣️ Route Generation**: Creating multiple route variations
-                    4. **📏 Proximity Calculation**: Measuring exact distance to crime zones for each route segment
-                    5. **🎨 Dynamic Coloring**: Routes change color based on **actual crime exposure**
-                    6. **🛡️ Safety Filtering**: Showing routes matching **{safety_priority.replace('_', ' ').title()}** priority
-                    
-                    **🎨 Color Logic:**
-                    - 🟢 Green: Route avoids high-crime areas (recommended)
-                    - 🟡 Yellow: Route passes near some crime areas (use caution)  
-                    - 🔴 Red: Route passes through crime zones (not recommended)
-                    """)
-                
                 st.markdown("---")
                 st.subheader(f"🧠 Smart Routes: {start_area} → {end_area}")
                 
@@ -920,4 +884,3 @@ else:
         """, 
         unsafe_allow_html=True
     )
- 

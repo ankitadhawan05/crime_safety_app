@@ -11,6 +11,46 @@ from data_preprocess import load_crime_data, add_time_of_day  # Import from your
 OSRM_HOST = "router.project-osrm.org"  # Free public OSRM server
 
 # ================= ENHANCED CRIME DATA LOADING WITH TIME FILTERING =================
+def get_route_specific_peak_crime_time(route_coords, crime_df, proximity_threshold=0.005):
+    """Get peak crime time specifically for crimes near this route (optimized)"""
+    if not route_coords or crime_df is None or crime_df.empty or 'Time of Day' not in crime_df.columns:
+        return None
+    
+    try:
+        # Sample route coordinates for performance (every 5th point)
+        sampled_coords = route_coords[::5] if len(route_coords) > 10 else route_coords
+        
+        nearby_crime_times = []
+        
+        # Use vectorized operations for better performance
+        crime_coords = crime_df[['LAT', 'LON']].values
+        crime_times = crime_df['Time of Day'].values
+        
+        for lon, lat in sampled_coords:
+            # Calculate distances to all crimes at once
+            distances = np.sqrt(np.sum((crime_coords - [lat, lon])**2, axis=1))
+            
+            # Find nearby crimes
+            nearby_indices = np.where(distances < proximity_threshold)[0]
+            
+            # Add times of nearby crimes
+            for idx in nearby_indices:
+                time_val = crime_times[idx]
+                if time_val and time_val != 'Unknown':
+                    nearby_crime_times.append(time_val)
+        
+        if nearby_crime_times:
+            # Find the most common time for crimes specifically near this route
+            from collections import Counter
+            time_counts = Counter(nearby_crime_times)
+            most_common_time = time_counts.most_common(1)[0][0]
+            return most_common_time
+        
+        return None
+    
+    except Exception:
+        return None
+
 @st.cache_data
 def load_crime_data_with_time_filter(time_of_travel="Any Time"):
     """Load and prepare crime data with time-based filtering"""
@@ -287,16 +327,17 @@ def analyze_route_crime_exposure(route_coords, crime_df, proximity_threshold=0.0
         return {"high_crime_exposure": 0, "medium_crime_exposure": 0, "total_segments": total_segments}
 
 def determine_route_safety_level(exposure_analysis):
-    """Determine route safety level based on crime exposure"""
+    """Determine route safety level based on crime exposure with corrected thresholds"""
     high_percentage = exposure_analysis["high_crime_percentage"]
     medium_percentage = exposure_analysis["medium_crime_percentage"]
+    total_percentage = high_percentage + medium_percentage
     
-    # Define thresholds
-    if high_percentage > 15:  # More than 15% through high crime areas
+    # FIXED: More accurate thresholds for route coloring
+    if high_percentage > 10:  # Routes with significant high-crime exposure
         return "high_risk", "red"
-    elif high_percentage > 5 or medium_percentage > 25:  # Some high crime or lots of medium crime
+    elif high_percentage > 3 or total_percentage > 20:  # Some high crime or moderate total crime
         return "medium_risk", "orange"
-    else:  # Minimal exposure to crime areas
+    else:  # Minimal exposure to crime areas (should be green)
         return "low_risk", "green"
 
 # ================= ORIGINAL GOOGLE MAPS-LIKE DISPLAY (RESTORED) =================
@@ -478,7 +519,7 @@ def create_enhanced_map(routes_data, crime_df, start_coords, end_coords, travel_
 
 # ================= ENHANCED ROUTE ANALYSIS =================
 def analyze_route_safety(routes_data, crime_df, safety_priority="balanced", time_of_travel="Any Time"):
-    """Analyze route safety and provide intelligent recommendations"""
+    """Analyze route safety and provide intelligent recommendations with corrected logic"""
     
     if not routes_data:
         return "No routes available", "medium"
@@ -510,27 +551,172 @@ def analyze_route_safety(routes_data, crime_df, safety_priority="balanced", time
     has_medium = "medium_risk" in safety_levels
     has_risky = "high_risk" in safety_levels
     
-    # Generate contextual message
-    if has_safe and safest_score < 3:
+    # FIXED: Generate contextual message with corrected thresholds
+    if has_safe and safest_score < 2:
         return "✅ Excellent! Safe routes found with minimal crime zone exposure.", "success"
     elif has_safe:
         return "✅ Safe routes available! The green route avoids high-crime areas effectively.", "success"
     elif has_medium and not has_risky:
-        return f"⚠️ Routes pass through some crime zones ({safest_score:.1f}% high-risk exposure). Exercise normal caution.", "warning"
+        return f"⚠️ Routes pass through some crime zones. Exercise normal caution.", "warning"
     elif has_medium and has_risky:
         return f"⚠️ This route passes through medium to high crime risk zones. Be aware while travelling.", "warning"
     elif has_risky:
         if safety_priority == "maximum_safety":
             return "🚨 No safe routes available for maximum safety settings. Consider different areas or times.", "error"
         else:
-            return f"🚨 High crime risk detected ({safest_score:.1f}% exposure). Consider alternative routes or travel times.", "error"
+            return "🚨 High crime risk detected along the route. For more information, please check Route Safety Information.", "error"
     else:
         return "ℹ️ Route analysis completed. Review individual route safety details below.", "info"
 
-# ================= MAIN COMPUTATION FUNCTION WITH ORIGINAL ROUTING =================
+# ================= OPTIMIZED ROUTE SAFETY DISPLAY =================
+def get_simple_route_safety_message(route_metadata, crime_df, routes_data, time_of_travel="Any Time"):
+    """Generate specific safety messages based on optimized route analysis"""
+    if not route_metadata or crime_df is None or crime_df.empty:
+        return "Route safety information is not available at this time."
+    
+    # Find the best (safest) route to analyze
+    best_route = None
+    lowest_risk = float('inf')
+    
+    for route_type, meta in route_metadata.items():
+        risk_percentage = meta["exposure"]["high_crime_percentage"]
+        if risk_percentage < lowest_risk:
+            lowest_risk = risk_percentage
+            best_route = route_type
+    
+    if best_route is None:
+        return "Route safety analysis completed. Follow standard safety precautions during your travel."
+    
+    # Get data for the best route
+    best_meta = route_metadata[best_route]
+    exposure = best_meta["exposure"]
+    
+    # Calculate risk exposure percentage
+    high_risk_percentage = exposure["high_crime_percentage"]
+    medium_risk_percentage = exposure["medium_crime_percentage"]
+    total_risk_percentage = high_risk_percentage + medium_risk_percentage
+    
+    # Only get peak crime time if user selected "Any Time"
+    peak_crime_time = None
+    if time_of_travel == "Any Time":
+        peak_crime_time = get_route_specific_peak_crime_time(routes_data.get(best_route, []), crime_df)
+    
+    # Build the message
+    message_parts = []
+    
+    # Risk exposure message with different logic for low risk
+    if total_risk_percentage == 0:
+        # Special case for 0% exposure
+        emoji = "✅"
+        message_parts.append(f"{emoji} The chosen route has {total_risk_percentage:.1f}% crime risk exposure.")
+        
+        # Peak crime time message only if "Any Time" selected
+        if peak_crime_time and peak_crime_time != "Unknown":
+            message_parts.append(f"Maximum crimes for this route occur during the {peak_crime_time.lower()}.")
+        
+        # Zero risk specific message
+        message_parts.append("It also has low proximity to serious crimes since it has minimal to no crimes. It is safe to travel on this route.")
+        
+    elif total_risk_percentage < 20:
+        risk_level = "not that high"
+        emoji = "✅"
+        
+        # Regular low-risk messaging
+        message_parts.append(f"{emoji} The chosen route has {total_risk_percentage:.1f}% crime risk exposure which is {risk_level}.")
+        
+        # Peak crime time message only if "Any Time" selected
+        if peak_crime_time and peak_crime_time != "Unknown":
+            message_parts.append(f"Maximum crimes for this route occur during the {peak_crime_time.lower()}.")
+        
+        # Low risk specific message
+        if high_risk_percentage < 5:
+            message_parts.append("It also has low proximity to serious crimes since it has minimal to no crimes. It is safe to travel on this route.")
+        else:
+            message_parts.append("It also has low proximity to serious crimes. It is safe to travel on this route.")
+            
+    elif total_risk_percentage < 40:
+        risk_level = "moderate"
+        emoji = "⚠️"
+        
+        message_parts.append(f"{emoji} The chosen route has {total_risk_percentage:.1f}% crime risk exposure which is {risk_level}.")
+        
+        # Peak crime time message only if "Any Time" selected
+        if peak_crime_time and peak_crime_time != "Unknown":
+            message_parts.append(f"Maximum crimes for this route occur during the {peak_crime_time.lower()}.")
+        
+        # Moderate risk messaging
+        if high_risk_percentage > 5:
+            message_parts.append("It also has moderate proximity to serious crimes.")
+        else:
+            message_parts.append("It also has low proximity to serious crimes.")
+            
+    else:
+        risk_level = "high"
+        emoji = "🚨"
+        
+        message_parts.append(f"{emoji} The chosen route has {total_risk_percentage:.1f}% crime risk exposure which is {risk_level}.")
+        
+        # Peak crime time message only if "Any Time" selected
+        if peak_crime_time and peak_crime_time != "Unknown":
+            message_parts.append(f"Maximum crimes for this route occur during the {peak_crime_time.lower()}.")
+        
+        # High risk messaging
+        if high_risk_percentage > 15:
+            message_parts.append("It also has high proximity to serious crimes. Consider alternative routes or travel times.")
+        else:
+            message_parts.append("It also has moderate proximity to serious crimes. Consider alternative routes or travel times.")
+    
+    return " ".join(message_parts)
+
+@st.cache_data
+def get_peak_crime_time_from_data(crime_df):
+    """Get peak crime time from overall crime data (cached for performance)"""
+    try:
+        if 'Time of Day' not in crime_df.columns:
+            return "Unknown"
+        
+        # Sample data for performance if dataset is large
+        if len(crime_df) > 1000:
+            sample_df = crime_df.sample(n=1000, random_state=42)
+        else:
+            sample_df = crime_df
+        
+        time_counts = sample_df['Time of Day'].value_counts()
+        if not time_counts.empty:
+            return time_counts.index[0]
+        
+        return "Unknown"
+    except Exception:
+        return "Unknown"
+
+@st.cache_data
+def analyze_crime_severity_distribution(crime_df):
+    """Analyze overall crime severity distribution (cached for performance)"""
+    try:
+        if 'Cluster' not in crime_df.columns:
+            return {"serious_percentage": 30}  # Default assumption
+        
+        # Sample for performance
+        if len(crime_df) > 1000:
+            sample_df = crime_df.sample(n=1000, random_state=42)
+        else:
+            sample_df = crime_df
+        
+        cluster_counts = sample_df['Cluster'].value_counts()
+        total_crimes = len(sample_df)
+        
+        serious_crimes = cluster_counts.get(0, 0)  # High risk crimes
+        serious_percentage = (serious_crimes / total_crimes) * 100 if total_crimes > 0 else 0
+        
+        return {"serious_percentage": serious_percentage}
+    
+    except Exception:
+        return {"serious_percentage": 30}  # Default assumption
+
+# ================= MAIN COMPUTATION FUNCTION WITH SIMPLIFIED DISPLAY =================
 def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", force_safe_route=False, 
                                  api_keys=None, safety_priority="balanced", time_of_travel="Any Time"):
-    """Enhanced route computation with ORIGINAL Google Maps-style routing + enhanced safety analysis"""
+    """Enhanced route computation with ORIGINAL Google Maps-style routing + simplified safety display"""
     
     try:
         # Load crime data with time filtering - ENHANCED
@@ -704,35 +890,25 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", 
         
         st.markdown("*Times are estimates and may vary based on traffic, weather, and route conditions.*")
         
-        # ENHANCED: Display route analysis with crime exposure
+        # SIMPLIFIED: Display simple route safety message (REPLACED COMPLEX ANALYSIS)
         if routes and route_metadata:
-            st.markdown("### 📊 Enhanced Route Safety Analysis")
+            st.markdown("### 🛡️ Route Safety Information")
             
-            route_cols = st.columns(len(routes))
+            # Get specific safety message with actual data analysis
+            safety_info = get_simple_route_safety_message(route_metadata, crime_df, routes, time_of_travel)
             
-            for i, (route_type, route_coords) in enumerate(routes.items()):
-                if route_type in route_metadata:
-                    metadata = route_metadata[route_type]
-                    exposure = metadata["exposure"]
-                    safety_level = metadata["safety_level"]
-                    
-                    with route_cols[i]:
-                        # Display with accurate safety assessment
-                        if safety_level == "low_risk":
-                            st.success("🟢 **Safe Route**")
-                            recommendation = "✅ Recommended for safe travel"
-                        elif safety_level == "medium_risk":
-                            st.warning("🟡 **Moderate Risk Route**")
-                            recommendation = "⚠️ Use caution, some crime exposure"
-                        else:
-                            st.error("🔴 **High Risk Route**")
-                            recommendation = "🚨 Not recommended - significant crime exposure"
-                        
-                        # Display exposure metrics
-                        st.metric("High Crime Exposure", f"{exposure['high_crime_percentage']:.1f}%")
-                        st.metric("Safe Segments", f"{exposure['total_segments'] - exposure['high_crime_exposure']}/{exposure['total_segments']}")
-                        
-                        st.write(f"**{recommendation}**")
+            # Display the specific message
+            if "✅" in safety_info:
+                st.success(safety_info)
+            elif "⚠️" in safety_info:
+                st.warning(safety_info)
+            elif "🚨" in safety_info:
+                st.error(safety_info)
+            else:
+                st.info(safety_info)
+            
+            # Add simple recommendation
+            st.write("**Recommendation:** Choose the green-colored route on the map for safest travel, or yellow for a balanced option.")
         
         # ORIGINAL: Risk Score Legend
         st.markdown("### 📊 Route Safety Guide")
