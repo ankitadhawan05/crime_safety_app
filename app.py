@@ -341,6 +341,26 @@ try:
             # Filter data for selected area
             area_data = crime_df[crime_df["AREA NAME"] == selected_area]
             
+            # Apply time period filtering
+            if analysis_timeframe != "All Time":
+                from datetime import datetime, timedelta
+                current_date = datetime.now()
+                
+                if analysis_timeframe == "Last Year":
+                    cutoff_date = current_date - timedelta(days=365)
+                elif analysis_timeframe == "Last 6 Months":
+                    cutoff_date = current_date - timedelta(days=180)
+                elif analysis_timeframe == "Last 3 Months":
+                    cutoff_date = current_date - timedelta(days=90)
+                
+                # Filter based on DATE OCC if available
+                if 'DATE OCC' in area_data.columns:
+                    try:
+                        area_data['DATE OCC'] = pd.to_datetime(area_data['DATE OCC'], errors='coerce')
+                        area_data = area_data[area_data['DATE OCC'] >= cutoff_date]
+                    except:
+                        st.info(f"Note: Time filtering not applied - date format issues in data")
+            
             if not area_data.empty:
                 # Key metrics with improved formatting
                 col1, col2, col3, col4 = st.columns(4)
@@ -432,7 +452,26 @@ try:
                         if 'Time of Day' in area_data.columns:
                             st.markdown("#### 🕐 Crime Distribution by Time of Day")
                             time_dist = area_data['Time of Day'].value_counts()
-                            st.bar_chart(time_dist)
+                            
+                            # Create colorful bar chart for time distribution
+                            time_colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4']
+                            fig_time = go.Figure(data=[
+                                go.Bar(
+                                    x=time_dist.index,
+                                    y=time_dist.values,
+                                    marker_color=time_colors[:len(time_dist)],
+                                    text=time_dist.values,
+                                    textposition='auto'
+                                )
+                            ])
+                            fig_time.update_layout(
+                                title="Crime Distribution by Time of Day",
+                                xaxis_title="Time of Day",
+                                yaxis_title="Number of Incidents",
+                                showlegend=False,
+                                height=400
+                            )
+                            st.plotly_chart(fig_time, use_container_width=True)
                     
                     with col2:
                         if 'Vict Sex' in area_data.columns:
@@ -453,7 +492,26 @@ try:
                             
                             # Create clean distribution with exactly 3 categories
                             gender_dist = victim_sex_final.value_counts()
-                            st.bar_chart(gender_dist)
+                            
+                            # Create colorful bar chart for gender distribution
+                            gender_colors = ['#FF9999', '#66B2FF', '#99FF99']
+                            fig_gender = go.Figure(data=[
+                                go.Bar(
+                                    x=gender_dist.index,
+                                    y=gender_dist.values,
+                                    marker_color=gender_colors[:len(gender_dist)],
+                                    text=gender_dist.values,
+                                    textposition='auto'
+                                )
+                            ])
+                            fig_gender.update_layout(
+                                title="Victim Distribution by Gender",
+                                xaxis_title="Gender",
+                                yaxis_title="Number of Incidents",
+                                showlegend=False,
+                                height=400
+                            )
+                            st.plotly_chart(fig_gender, use_container_width=True)
                     
                     # Add victim distribution by age group
                     col3, col4 = st.columns(2)
@@ -605,11 +663,7 @@ try:
                             'Count': crime_types.values
                         })
                         
-                        # Truncate long crime names for better display
-                        crime_data_for_plot['Crime Type'] = crime_data_for_plot['Crime Type'].apply(
-                            lambda x: x[:20] + "..." if len(str(x)) > 20 else str(x)
-                        )
-                        
+                        # Don't truncate crime names for pie chart - keep full names
                         # Define colors for top 5 crimes
                         colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57']
                         
@@ -629,7 +683,7 @@ try:
                             )
                         ])
                         
-                        # Update layout for better readability
+                        # Update layout for better readability with smaller legend font
                         fig.update_layout(
                             title=f"Top 5 Crime Types in {selected_area}",
                             font=dict(size=12),
@@ -640,7 +694,8 @@ try:
                                 yanchor="middle",
                                 y=0.5,
                                 xanchor="left",
-                                x=1.05
+                                x=1.05,
+                                font=dict(size=9)  # Smaller font for legend
                             )
                         )
                         
