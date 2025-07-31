@@ -8,7 +8,107 @@ from streamlit_folium import st_folium
 from data_preprocess import load_crime_data, preprocess_for_clustering  # Updated imports
 from clustering_engine import load_clustering_model, predict_clusters_safe  # Updated imports
 
-# ================= ENHANCED CRIME DATA LOADING WITH TIME FILTERING =================
+# Import config for environment variables
+try:
+    from config import config
+    CONFIG_AVAILABLE = True
+except ImportError:
+    CONFIG_AVAILABLE = False
+    # Removed the st.warning message
+
+# ================= CONFIGURATION MANAGEMENT (NEW) =================
+def get_routing_config():
+    """Get routing service configuration from config module or fallback"""
+    if CONFIG_AVAILABLE:
+        return config.get_routing_config()
+    else:
+        # Fallback configuration
+        import os
+        is_deployed = bool(
+            os.getenv('STREAMLIT_SHARING') or 
+            os.getenv('HEROKU') or 
+            os.getenv('RAILWAY_ENVIRONMENT')
+        )
+        
+        if is_deployed:
+            return {
+                'osrm': {
+                    'host': 'router.project-osrm.org',
+                    'port': '',
+                    'protocol': 'https',
+                    'base_url': 'https://router.project-osrm.org'
+                },
+                'openrouteservice': {
+                    'base_url': 'https://api.openrouteservice.org/v2/directions',
+                    'api_key': os.getenv('OPENROUTESERVICE_API_KEY')
+                }
+            }
+        else:
+            return {
+                'osrm': {
+                    'host': 'localhost',
+                    'port': '5000',
+                    'protocol': 'http',
+                    'base_url': 'http://localhost:5000'
+                },
+                'openrouteservice': {
+                    'base_url': 'https://api.openrouteservice.org/v2/directions',
+                    'api_key': os.getenv('OPENROUTESERVICE_API_KEY')
+                }
+            }
+
+def get_openrouteservice_route_with_config(start_coords, end_coords, travel_mode="driving"):
+    """Get route from OpenRouteService using config (NEW FUNCTION)"""
+    
+    routing_config = get_routing_config()
+    ors_config = routing_config['openrouteservice']
+    
+    if not ors_config['api_key']:
+        return None  # Silently return None instead of showing warning
+    
+    # Convert travel mode to ORS profile
+    profile_mapping = {
+        "driving": "driving-car",
+        "walking": "foot-walking", 
+        "cycling": "cycling-regular"
+    }
+    profile = profile_mapping.get(travel_mode, "driving-car")
+    
+    url = f"{ors_config['base_url']}/{profile}/geojson"
+    
+    headers = {
+        'Authorization': ors_config['api_key'],
+        'Content-Type': 'application/json'
+    }
+    
+    # Request body
+    body = {
+        "coordinates": [[start_coords[1], start_coords[0]], [end_coords[1], end_coords[0]]],
+        "alternative_routes": {"target_count": 3, "weight_factor": 1.4},
+        "format": "geojson"
+    }
+    
+    try:
+        response = requests.post(url, json=body, headers=headers, timeout=30)
+        response.raise_for_status()
+        route_data = response.json()
+        
+        if route_data and 'features' in route_data:
+            routes = route_data['features']
+            
+            # Convert to your original format
+            formatted_routes = {}
+            for i, route in enumerate(routes[:3]):  # Limit to 3 routes
+                route_name = f"route_{i+1}"
+                formatted_routes[route_name] = route['geometry']['coordinates']
+            
+            return formatted_routes
+                
+    except Exception as e:
+        return None  # Silently return None instead of showing warning
+
+# ================= YOUR ORIGINAL FUNCTIONS (UNCHANGED) =================
+
 @st.cache_data
 def load_time_filtered_crime_data(time_of_travel="Any Time"):
     """Load crime data with advanced time and severity filtering"""
@@ -642,12 +742,29 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", 
         start_lat, start_lon = float(start_coords['LAT']), float(start_coords['LON'])
         end_lat, end_lon = float(end_coords['LAT']), float(end_coords['LON'])
         
+        # Try to get real roads routes with OpenRouteService if available
+        real_routes = None
+        if api_keys and 'openrouteservice' in api_keys:
+            real_routes = get_openrouteservice_route_with_config(
+                (start_lat, start_lon), 
+                (end_lat, end_lon), 
+                travel_mode
+            )
+        
         # Generate safety-filtered routes
         with st.spinner("🧠 Analyzing crime patterns and generating intelligent routes..."):
-            routes, route_metadata = generate_safety_filtered_routes(
-                (start_lat, start_lon), (end_lat, end_lon), 
-                crime_df, safety_priority, time_of_travel
-            )
+            if real_routes:
+                routes = real_routes
+                # Analyze each real route
+                route_metadata = {}
+                for route_name, route_coords in real_routes.items():
+                    exposure = calculate_detailed_crime_exposure(route_coords, crime_df)
+                    route_metadata[route_name] = {"exposure": exposure}
+            else:
+                routes, route_metadata = generate_safety_filtered_routes(
+                    (start_lat, start_lon), (end_lat, end_lon), 
+                    crime_df, safety_priority, time_of_travel
+                )
         
         if not routes:
             st.error(f"❌ No routes meeting {safety_priority} safety criteria found.")
@@ -900,11 +1017,14 @@ def display_multi_route_map(routes_data, clustered_df, start_coords, end_coords,
     return map_obj, route_metadata
 
 def generate_multiple_routes_real_roads(start_coords, end_coords, travel_mode="driving", api_keys=None):
-    """Backwards compatibility function"""
-    # Load default crime data
-    crime_df = load_time_filtered_crime_data("Any Time")
-    routes, _ = generate_safety_filtered_routes(start_coords, end_coords, crime_df, "balanced")
-    return routes
+    """Backwards compatibility function with CONFIG INTEGRATION"""
+    if api_keys and 'openrouteservice' in api_keys:
+        return get_openrouteservice_route_with_config(start_coords, end_coords, travel_mode)
+    else:
+        # Load default crime data
+        crime_df = load_time_filtered_crime_data("Any Time")
+        routes, _ = generate_safety_filtered_routes(start_coords, end_coords, crime_df, "balanced")
+        return routes
 
 def get_route_recommendation(risk_scores, travel_mode):
     """Backwards compatibility function"""
@@ -924,8 +1044,8 @@ def get_route_recommendation(risk_scores, travel_mode):
 def get_enhanced_system_info():
     """Get comprehensive information about the enhanced system"""
     return {
-        "system_name": "Dynamic Crime-Aware Routing System",
-        "version": "2.0",
+        "system_name": "Dynamic Crime-Aware Multi-Route System with Config",
+        "version": "2.0-Config",
         "features": [
             "Real-time crime zone proximity analysis",
             "Time-of-day crime pattern filtering",
@@ -934,7 +1054,9 @@ def get_enhanced_system_info():
             "Safety priority-based route filtering",
             "Intelligent safety message generation",
             "Enhanced crime data visualization",
-            "Contextual safety recommendations"
+            "Contextual safety recommendations",
+            "Environment variable configuration (NEW)",
+            "OpenRouteService integration with API key (NEW)"
         ],
         "safety_analysis": {
             "crime_classification": "3-tier severity system (High/Medium/Low)",
@@ -942,6 +1064,11 @@ def get_enhanced_system_info():
             "color_coding": "Dynamic based on actual crime zone proximity",
             "safety_thresholds": "Configurable high/medium/low risk percentages"
         },
+        "routing_services": [
+            "OpenRouteService (with API key from config)",
+            "Fallback algorithmic route generation"
+        ],
+        "configuration": "Environment variables via .env file and config module",
         "data_sources": [
             "Police incident reports",
             "Geographic crime clustering",

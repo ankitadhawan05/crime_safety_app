@@ -590,5 +590,3 @@ if __name__ == "__main__":
     render_enhanced_ui()
     add_enhanced_sidebar_info()
 
-
-
