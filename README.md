@@ -35,7 +35,7 @@ Interactive, modular dashboard with real-time maps, charts, and filters.
 │ └── crime_data.parquet # Preprocessed crime dataset downloaded from data.gov
 └── LAPD_police_stations # Downloaded from geohub.lacity.org
 ├── models/
-│ └── crime_model.pkl # Trained clustering or forecast models
+│ └── crime_model.pkl, forecasting(on the go) # Trained clustering or forecast models
 ├── requirements.txt 
 ```
 
