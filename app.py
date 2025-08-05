@@ -3,12 +3,250 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-# ✅ Set page config
+# ✅ Set page config with enhanced styling
 st.set_page_config(
     page_title="🛡️ Crime Safety Travel Assistant", 
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    page_icon="🛡️"
 )
+
+# ✅ Enhanced CSS styling for professional appearance
+st.markdown("""
+<style>
+    /* Main background and typography */
+    .main {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    /* Sidebar styling */
+    .sidebar .sidebar-content {
+        background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    /* Header styling */
+    .main-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    
+    /* Feature cards */
+    .feature-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        margin: 1rem 0;
+        border-left: 4px solid #667eea;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .feature-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+    }
+    
+    /* Buttons */
+    .stButton > button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 1.5rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    /* Metrics */
+    .metric-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        text-align: center;
+    }
+    
+    /* Success/Warning/Error styling */
+    .stSuccess {
+        background: linear-gradient(135deg, #4CAF50, #45a049);
+        border-radius: 8px;
+    }
+    
+    .stWarning {
+        background: linear-gradient(135deg, #ff9800, #f57c00);
+        border-radius: 8px;
+    }
+    
+    .stError {
+        background: linear-gradient(135deg, #f44336, #d32f2f);
+        border-radius: 8px;
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        border-radius: 8px;
+        font-weight: 600;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background: white;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-weight: 600;
+    }
+    
+    /* Custom font sizes */
+    .big-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+    
+    .medium-title {
+        font-size: 1.8rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+    
+    .small-title {
+        font-size: 1.2rem;
+        font-weight: 500;
+        color: #666;
+    }
+    
+    /* Introduction page specific styling */
+    .intro-hero {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 3rem 2rem;
+        border-radius: 20px;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    }
+    
+    /* Safety images styling */
+    .safety-images {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 3rem;
+        margin: 2rem 0;
+        padding: 2rem;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 15px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    }
+    
+    .safety-image-container {
+        position: relative;
+        width: 240px;
+        height: 180px;
+    }
+    
+    .safety-pins-bg {
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #87CEEB 0%, #4682B4 100%);
+        border-radius: 10px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .safety-pin {
+        position: absolute;
+        width: 30px;
+        height: 15px;
+        border: 2px solid #C0C0C0;
+        border-radius: 20px 20px 0 0;
+        background: transparent;
+    }
+    
+    .safety-pin::after {
+        content: '';
+        position: absolute;
+        bottom: -8px;
+        left: 2px;
+        width: 2px;
+        height: 20px;
+        background: #C0C0C0;
+    }
+    
+    .pin1 { top: 20px; left: 30px; transform: rotate(-15deg); }
+    .pin2 { top: 40px; right: 40px; transform: rotate(25deg); }
+    .pin3 { bottom: 60px; left: 20px; transform: rotate(45deg); }
+    .pin4 { bottom: 30px; right: 20px; transform: rotate(-30deg); }
+    .pin5 { top: 70px; left: 80px; transform: rotate(10deg); }
+    
+    .location-pin {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 60px;
+        height: 80px;
+        z-index: 2;
+    }
+    
+    .location-pin svg {
+        width: 100%;
+        height: 100%;
+        filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+    }
+    
+    .safety-text {
+        flex: 1;
+        max-width: 300px;
+    }
+    
+    .safety-byline {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #4682B4;
+        text-align: left;
+        line-height: 1.2;
+        margin: 0;
+    }
+    
+    @media (max-width: 768px) {
+        .safety-images {
+            flex-direction: column;
+            gap: 2rem;
+        }
+        
+        .safety-byline {
+            text-align: center;
+            font-size: 2rem;
+        }
+    }
+    
+    .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin: 2rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ✅ Import modules with error handling
 try:
@@ -264,7 +502,7 @@ try:
     
     # FIXED Enhanced Area Analysis with better integration
     def run_area_analysis():
-        """Enhanced Area Analysis functionality with improved formatting and visualization"""
+        """Enhanced Area Analysis functionality with uniform purple color scheme"""
         st.markdown("### 📊 Crime Analysis by Area")
         
         # Load area data
@@ -362,13 +600,13 @@ try:
                         st.info(f"Note: Time filtering not applied - date format issues in data")
             
             if not area_data.empty:
-                # Key metrics with improved formatting
+                # Key metrics with improved formatting and purple accent
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
                     total_incidents = len(area_data)
                     st.markdown(f"""
-                    <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #1f77b4;">
+                    <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #9c27b0;">
                         <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
                             📊 Total Incidents
                         </div>
@@ -398,7 +636,7 @@ try:
                         most_common_victim = victim_sex_final.mode()[0] if not victim_sex_final.mode().empty else "N/A"
                         
                         st.markdown(f"""
-                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #9467bd;">
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #9c27b0;">
                             <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
                                 👥 Most Affected
                             </div>
@@ -413,7 +651,7 @@ try:
                         peak_time = area_data['Time of Day'].mode()[0] if not area_data['Time of Day'].mode().empty else "N/A"
                         
                         st.markdown(f"""
-                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #ff7f0e;">
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #9c27b0;">
                             <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
                                 ⏰ Peak Crime Time
                             </div>
@@ -431,7 +669,7 @@ try:
                         
                         # Use HTML to make the text smaller and wrap if needed
                         st.markdown(f"""
-                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #ff4b4b;">
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #9c27b0;">
                             <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
                                 🚨 Most Common Crime
                             </div>
@@ -453,14 +691,17 @@ try:
                             st.markdown("#### 🕐 Crime Distribution by Time of Day")
                             time_dist = area_data['Time of Day'].value_counts()
                             
-                            # Create colorful bar chart for time distribution
-                            time_colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4']
+                            # Calculate percentages
+                            time_percentages = (time_dist / time_dist.sum() * 100).round(1)
+                            
+                            # Purple color scheme for time distribution
+                            time_colors = ['#9c88ff', '#7c4dff', '#651fff', '#6200ea']
                             fig_time = go.Figure(data=[
                                 go.Bar(
                                     x=time_dist.index,
                                     y=time_dist.values,
                                     marker_color=time_colors[:len(time_dist)],
-                                    text=time_dist.values,
+                                    text=[f"{pct}%" for pct in time_percentages.values],
                                     textposition='auto'
                                 )
                             ])
@@ -493,14 +734,17 @@ try:
                             # Create clean distribution with exactly 3 categories
                             gender_dist = victim_sex_final.value_counts()
                             
-                            # Create colorful bar chart for gender distribution
-                            gender_colors = ['#FF9999', '#66B2FF', '#99FF99']
+                            # Calculate percentages
+                            gender_percentages = (gender_dist / gender_dist.sum() * 100).round(1)
+                            
+                            # Purple color scheme for gender distribution
+                            gender_colors = ['#b388ff', '#9575cd', '#7e57c2']
                             fig_gender = go.Figure(data=[
                                 go.Bar(
                                     x=gender_dist.index,
                                     y=gender_dist.values,
                                     marker_color=gender_colors[:len(gender_dist)],
-                                    text=gender_dist.values,
+                                    text=[f"{pct}%" for pct in gender_percentages.values],
                                     textposition='auto'
                                 )
                             ])
@@ -550,7 +794,29 @@ try:
                                            'Middle-aged (40-59)', 'Elderly (60+)']
                             age_dist_ordered = age_dist.reindex([cat for cat in desired_order if cat in age_dist.index])
                             
-                            st.bar_chart(age_dist_ordered)
+                            # Calculate percentages
+                            age_percentages = (age_dist_ordered / age_dist_ordered.sum() * 100).round(1)
+                            
+                            # Purple color scheme for age distribution
+                            age_colors = ['#e1bee7', '#ce93d8', '#ba68c8', '#ab47bc', '#9c27b0']
+                            fig_age = go.Figure(data=[
+                                go.Bar(
+                                    x=age_dist_ordered.index,
+                                    y=age_dist_ordered.values,
+                                    marker_color=age_colors[:len(age_dist_ordered)],
+                                    text=[f"{pct}%" for pct in age_percentages.values],
+                                    textposition='auto'
+                                )
+                            ])
+                            fig_age.update_layout(
+                                title="Victim Distribution by Age Group",
+                                xaxis_title="Age Group",
+                                yaxis_title="Number of Incidents",
+                                showlegend=False,
+                                height=400,
+                                xaxis=dict(tickangle=-45)
+                            )
+                            st.plotly_chart(fig_age, use_container_width=True)
                     
                     with col4:
                         # Add some statistics about age distribution
@@ -569,7 +835,7 @@ try:
                                 most_vulnerable_group = age_groups_valid.value_counts().index[0] if len(age_groups_valid.value_counts()) > 0 else "No data"
                                 
                                 st.markdown(f"""
-                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #17a2b8;">
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #9c27b0;">
                                     <div style="margin-bottom: 10px;">
                                         <strong>📈 Average Age:</strong> {avg_age:.1f} years
                                     </div>
@@ -578,7 +844,7 @@ try:
                                     </div>
                                     <div style="margin-bottom: 10px;">
                                         <strong>🎯 Most Affected Group:</strong><br>
-                                        <span style="color: #dc3545; font-weight: 600;">{most_vulnerable_group}</span>
+                                        <span style="color: #9c27b0; font-weight: 600;">{most_vulnerable_group}</span>
                                     </div>
                                     <div style="font-size: 11px; color: #6c757d; margin-top: 10px;">
                                         Based on {len(valid_ages):,} valid age records
@@ -590,7 +856,7 @@ try:
                         else:
                             st.info("Age data not available in this dataset")
                     
-                    # Add Crime Risk Levels Distribution Chart - FIXED VERSION
+                    # Add Crime Risk Levels Distribution Chart - FIXED VERSION with purple colors
                     col5, col6 = st.columns(2)
                     
                     with col5:
@@ -599,7 +865,7 @@ try:
                             risk_dist = area_data['Risk Level'].value_counts()
                             
                             # Create enhanced risk chart with colors - ONLY PERCENTAGES
-                            risk_colors = {'High Risk': '#ff4b4b', 'Medium Risk': '#ffa500', 'Low Risk': '#00cc44'}
+                            risk_colors = {'High Risk': '#6a1b9a', 'Medium Risk': '#8e24aa', 'Low Risk': '#ab47bc'}
                             fig_risk = go.Figure(data=[
                                 go.Bar(
                                     x=risk_dist.index,
@@ -631,15 +897,15 @@ try:
                             low_risk_pct = (risk_counts.get('Low Risk', 0) / total_crimes * 100) if total_crimes > 0 else 0
                             
                             st.markdown(f"""
-                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #ff4b4b;">
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #9c27b0;">
                                 <div style="margin-bottom: 10px;">
-                                    <strong style="color: #ff4b4b;">🔴 High Risk:</strong> {risk_counts.get('High Risk', 0):,} ({high_risk_pct:.1f}%)
+                                    <strong style="color: #6a1b9a;">🔴 High Risk:</strong> {risk_counts.get('High Risk', 0):,} ({high_risk_pct:.1f}%)
                                 </div>
                                 <div style="margin-bottom: 10px;">
-                                    <strong style="color: #ffa500;">🟡 Medium Risk:</strong> {risk_counts.get('Medium Risk', 0):,} ({medium_risk_pct:.1f}%)
+                                    <strong style="color: #8e24aa;">🟡 Medium Risk:</strong> {risk_counts.get('Medium Risk', 0):,} ({medium_risk_pct:.1f}%)
                                 </div>
                                 <div style="margin-bottom: 10px;">
-                                    <strong style="color: #00cc44;">🟢 Low Risk:</strong> {risk_counts.get('Low Risk', 0):,} ({low_risk_pct:.1f}%)
+                                    <strong style="color: #ab47bc;">🟢 Low Risk:</strong> {risk_counts.get('Low Risk', 0):,} ({low_risk_pct:.1f}%)
                                 </div>
                                 <div style="font-size: 11px; color: #6c757d; margin-top: 10px;">
                                     Based on {total_crimes:,} total incidents
@@ -647,7 +913,7 @@ try:
                             </div>
                             """, unsafe_allow_html=True)
                     
-                    # FIXED: PIE CHART FOR TOP 5 CRIMES
+                    # FIXED: PIE CHART FOR TOP 5 CRIMES with teal colors
                     if 'Crm Cd Desc' in area_data.columns:
                         st.markdown("#### 🚨 Top 5 Crime Types Distribution")
                         crime_types = area_data['Crm Cd Desc'].value_counts().head(5)
@@ -663,16 +929,15 @@ try:
                             'Count': crime_types.values
                         })
                         
-                        # Don't truncate crime names for pie chart - keep full names
-                        # Define colors for top 5 crimes
-                        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57']
+                        # Teal color scheme for pie chart (complementary to purple)
+                        teal_colors = ['#009688', '#00897b', '#00796b', '#00695c', '#004d40']
                         
                         # Create the pie chart
                         fig = go.Figure(data=[
                             go.Pie(
                                 labels=crime_data_for_plot['Crime Type'],
                                 values=crime_data_for_plot['Percentage'],
-                                marker_colors=colors[:len(crime_data_for_plot)],
+                                marker_colors=teal_colors[:len(crime_data_for_plot)],
                                 textinfo='label+percent',
                                 textposition='auto',
                                 hovertemplate='<b>%{label}</b><br>' +
@@ -822,9 +1087,170 @@ except ImportError:
         
         ENHANCED_AVAILABLE = False
 
+# ✅ NEW INTRODUCTION PAGE FUNCTION
+def show_introduction_page():
+    """Show the introduction/welcome page"""
+    
+    # Hero section
+    st.markdown("""
+    <div class="intro-hero">
+        <div class="big-title">🛡️ Welcome to the Crime Safety Travel Assistant</div>
+        <div class="medium-title">A Smart Travel Planner for Safer Journeys</div>
+        <p style="font-size: 1.2rem; margin-top: 1rem; opacity: 0.9;">
+            Keep yourself and your loved ones safe from crime risks with AI-powered route planning 
+            and real-time safety intelligence.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Safety images section
+    st.markdown("""
+    <div class="safety-images">
+        <div class="safety-image-container">
+            <div class="safety-pins-bg">
+                <div class="safety-pin pin1"></div>
+                <div class="safety-pin pin2"></div>
+                <div class="safety-pin pin3"></div>
+                <div class="safety-pin pin4"></div>
+                <div class="safety-pin pin5"></div>
+            </div>
+            <div class="location-pin">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#000000"/>
+                    <circle cx="12" cy="9" r="2.5" fill="#FFFFFF"/>
+                </svg>
+            </div>
+        </div>
+        <div class="safety-text">
+            <div class="safety-byline">Pin your<br>safety</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Core features section
+    st.markdown('<div class="feature-grid">', unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="feature-card">
+            <h3 style="color: #667eea; margin-bottom: 1rem;">🗺️ Enhanced Smart Routing</h3>
+            <ul style="line-height: 1.8; color: #444;">
+                <li><strong>Crime-aware route planning</strong> that adapts to real crime patterns</li>
+                <li><strong>Safety priority filtering</strong> with maximum safety, balanced, and speed options</li>
+                <li><strong>Time-based analysis</strong> considering crime patterns throughout the day</li>
+                <li><strong>Intelligent route recommendations</strong> with dynamic safety messaging</li>
+                <li><strong>Multi-modal support</strong> for driving, walking, and cycling</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="feature-card">
+            <h3 style="color: #667eea; margin-bottom: 1rem;">🎯 Advanced Mapping & Analysis</h3>
+            <ul style="line-height: 1.8; color: #444;">
+                <li><strong>Interactive crime visualization</strong> with Google Maps-like interface</li>
+                <li><strong>Alternative route generation</strong> based on crime risk levels</li>
+                <li><strong>Gender and time-specific routing</strong> for personalized safety</li>
+                <li><strong>Street-level safety analysis</strong> showing which areas to avoid</li>
+                <li><strong>Real-time risk assessment</strong> for different times of day</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="feature-card">
+            <h3 style="color: #667eea; margin-bottom: 1rem;">🚨 Crime Alerts & Intelligence</h3>
+            <ul style="line-height: 1.8; color: #444;">
+                <li><strong>Real-time crime notifications</strong> for your travel areas</li>
+                <li><strong>Official LAPD station locator</strong> with contact information</li>
+                <li><strong>Interactive alert mapping</strong> showing recent incidents</li>
+                <li><strong>Customizable alert settings</strong> for personalized monitoring</li>
+                <li><strong>Official data integration</strong> from LA City GeoHub</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # How it works section
+    st.markdown("---")
+    st.markdown('<div class="medium-title" style="text-align: center; margin: 2rem 0;">🧠 How It Works</div>', unsafe_allow_html=True)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("""
+        <div style="text-align: center; padding: 1rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">📊</div>
+            <h4 style="color: #667eea;">Analyze Crime Data</h4>
+            <p style="color: #666;">AI processes historical crime patterns and real-time incidents</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div style="text-align: center; padding: 1rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🗺️</div>
+            <h4 style="color: #667eea;">Generate Routes</h4>
+            <p style="color: #666;">Create multiple route options with different safety levels</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div style="text-align: center; padding: 1rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🎯</div>
+            <h4 style="color: #667eea;">Risk Assessment</h4>
+            <p style="color: #666;">Color-code routes based on actual crime zone proximity</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown("""
+        <div style="text-align: center; padding: 1rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🛡️</div>
+            <h4 style="color: #667eea;">Stay Safe</h4>
+            <p style="color: #666;">Get personalized safety recommendations and alerts</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Getting started section
+    st.markdown("---")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("""
+        <div style="text-align: center; padding: 2rem; background: white; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">
+            <h3 style="color: #667eea; margin-bottom: 1rem;">🚀 Ready to Start?</h3>
+            <p style="color: #666; margin-bottom: 1.5rem;">
+                Begin by exploring crime hotspots in your area, then plan safer routes for your journeys.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🧭 Explore Crime Hotspots", type="primary", use_container_width=True):
+            st.session_state.current_page = "Crime Hotspot Clustering"
+            st.rerun()
+    
+    # Data source and disclaimer
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; padding: 1rem; color: #666; font-size: 0.9rem;">
+        <p><strong>Data Sources:</strong> Official LAPD crime data from LA City GeoHub • Police station locations from geohub.lacity.org</p>
+        <p><strong>Disclaimer:</strong> This tool provides guidance based on historical data. Always use your judgment and follow local safety guidelines.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
 # ✅ Initialize session state for page navigation
 if "page" not in st.session_state:
     st.session_state.page = "clustering"
+
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "Introduction"
 
 # Initialize route planning session state
 if "route_start" not in st.session_state:
@@ -832,12 +1258,16 @@ if "route_start" not in st.session_state:
 if "route_end" not in st.session_state:
     st.session_state.route_end = None
 
-# ✅ Main UI Header
-st.title("🛡️ Crime Safety Travel Assistant")
-if ENHANCED_AVAILABLE:
-    st.markdown("*🆕 Enhanced with AI-powered dynamic crime-aware routing*")
-else:
-    st.markdown("*AI-powered crime analysis with intelligent route planning*")
+# ✅ Main UI Header (only show if not on introduction page)
+if st.session_state.current_page != "Introduction":
+    st.markdown("""
+    <div class="main-header">
+        <div class="big-title">🛡️ Crime Safety Travel Assistant</div>
+        <p style="font-size: 1.1rem; margin: 0; opacity: 0.9;">
+            AI-powered route planning with enhanced crime analysis and safety intelligence
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ✅ Add crime alert integration with official LAPD data
 if ALERTS_AVAILABLE:
@@ -864,8 +1294,9 @@ def handle_page_routing():
 if handle_page_routing():
     pass
 else:
-    # ✅ Normal sidebar navigation
+    # ✅ Navigation with Introduction page
     menu_options = [
+        "🏠 Introduction",
         "🧭 Crime Hotspot Clustering",
         "🗺️ Safe Route Mapping", 
         "📊 Crime Forecasting"
@@ -875,24 +1306,46 @@ else:
     if ALERTS_AVAILABLE:
         menu_options.append("🚨 Crime Alerts")
     
+    # Use current_page from session state for navigation
+    if st.session_state.current_page not in [opt.split(" ", 1)[1] for opt in menu_options]:
+        st.session_state.current_page = "Introduction"
+    
+    # Create menu with current selection
+    menu_index = 0
+    for i, opt in enumerate(menu_options):
+        if opt.split(" ", 1)[1] == st.session_state.current_page:
+            menu_index = i
+            break
+    
     menu = st.sidebar.radio(
-        "🧭 Choose Feature",
+        "🧭 Navigation",
         menu_options,
+        index=menu_index,
         help="Select the feature you want to use"
     )
+    
+    # Update current page when menu changes
+    selected_page = menu.split(" ", 1)[1]
+    if selected_page != st.session_state.current_page:
+        st.session_state.current_page = selected_page
+        st.rerun()
 
     # ✅ Reset page state when using normal navigation
-    if menu == "🧭 Crime Hotspot Clustering":
+    if st.session_state.current_page == "Crime Hotspot Clustering":
         st.session_state.page = "clustering"
 
     # ✅ Menu logic
     try:
-        if menu == "🧭 Crime Hotspot Clustering":
-            st.markdown("### 🧭 Crime Hotspot Analysis")
-            st.markdown("Analyze crime patterns and identify high-risk areas using machine learning clustering.")
+        if st.session_state.current_page == "Introduction":
+            show_introduction_page()
+            
+        elif st.session_state.current_page == "Crime Hotspot Clustering":
+            # Updated font sizes as requested
+            st.markdown('<h1 style="font-size: 2.2rem; font-weight: 700; color: #333; margin-bottom: 0.5rem;">🧭 Crime Hotspot Analysis</h1>', unsafe_allow_html=True)
+            st.markdown('<p style="font-size: 1rem; color: #666; margin-bottom: 1.5rem;">Check areas with Crime Hotspots</p>', unsafe_allow_html=True)
             run_clustering_ui()
 
-        elif menu == "🗺️ Safe Route Mapping":
+        elif st.session_state.current_page == "Safe Route Mapping":
             # Enhanced tabs for route mapping and area analysis
             if ENHANCED_AVAILABLE:
                 tab1, tab2 = st.tabs(["🗺️ Smart Route Planning", "📊 Enhanced Area Analysis"])
@@ -919,12 +1372,12 @@ else:
             with tab2:
                 run_area_analysis()
 
-        elif menu == "📊 Crime Forecasting":
+        elif st.session_state.current_page == "Crime Forecasting":
             st.markdown("### 📊 Crime Forecasting")
             st.markdown("Predict future crime trends using advanced AI forecasting models.")
             run_forecast()
         
-        elif menu == "🚨 Crime Alerts" and ALERTS_AVAILABLE:
+        elif st.session_state.current_page == "Crime Alerts" and ALERTS_AVAILABLE:
             run_crime_alerts_page()
 
     except Exception as e:
@@ -942,54 +1395,11 @@ else:
             6. **Enhanced Features** - Install enhanced modules for full functionality
             """)
 
-# ✅ Enhanced Sidebar
+# ✅ Simplified Sidebar (removed the system features section as requested)
 st.sidebar.markdown("---")
-st.sidebar.markdown("### ℹ️ System Features")
-
-if ENHANCED_AVAILABLE:
-    st.sidebar.success("""
-    **🆕 Enhanced Smart Routing** ✅
-    
-    ✅ Dynamic crime-aware route colors
-    ✅ Time-based crime pattern analysis
-    ✅ Safety priority filtering
-    ✅ Intelligent route recommendations
-    ✅ Real-time crime zone detection
-    ✅ Enhanced safety messaging
-    """)
-    
-    st.sidebar.success("""
-    **🗺️ Advanced Mapping** ✅
-    
-    ✅ Google Maps-like visualization
-    ✅ Real road routing via OSRM
-    ✅ Crime-aware route analysis
-    ✅ Multi-modal travel support
-    """)
-else:
-    st.sidebar.info("""
-    **🗺️ Basic Mapping** ✅
-    
-    ✅ Crime pattern analysis
-    ✅ Route planning
-    ✅ Safety recommendations
-    
-    💡 Install enhanced modules for advanced features
-    """)
-
-if ALERTS_AVAILABLE:
-    st.sidebar.success("""
-    **🚨 Crime Alerts** ✅
-    
-    ✅ Real-time crime notifications
-    ✅ Official LAPD station locator
-    ✅ Interactive alert map
-    ✅ Customizable alert settings
-    ✅ Data from geohub.lacity.org
-    """)
 
 # Enhanced emergency section
-st.sidebar.markdown("### 🚨 Emergency")
+st.sidebar.markdown("### 🚨 Emergency Contacts")
 st.sidebar.error("""
 **🆘 IMMEDIATE DANGER**
 - **Police Emergency**: 911
@@ -1002,58 +1412,23 @@ st.sidebar.warning("""
 - **Traffic Issues**: 311
 """)
 
-# ✅ Data source information
-st.sidebar.markdown("### 📊 Data Sources")
-if ENHANCED_AVAILABLE:
-    st.sidebar.markdown("""
-    - **Crime Data**: LA Crime Database (Enhanced)
-    - **Police Stations**: geohub.lacity.org
-    - **Route Data**: OSRM/Free APIs
-    - **Time Analysis**: Enhanced time-based filtering
-    - **Risk Analysis**: AI-powered severity classification
-    """)
-else:
-    st.sidebar.markdown("""
-    - **Crime Data**: LA Crime Database
-    - **Police Stations**: geohub.lacity.org
-    - **Route Data**: Basic routing
-    """)
-
-# ✅ Current page and feature indicator
+# ✅ Current page indicator
 with st.sidebar:
-    if st.session_state.page == "safe_route":
-        if ENHANCED_AVAILABLE:
-            st.info("📍 Currently: Enhanced Smart Route Mapping")
-        else:
-            st.info("📍 Currently: Basic Safe Route Mapping")
-    else:
-        st.info(f"📍 Currently: {menu}")
-    
-    # Feature status
-    if ENHANCED_AVAILABLE:
-        st.success("🚀 Enhanced Features: ACTIVE")
-    else:
-        st.warning("⚙️ Basic Features: ACTIVE")
+    st.info(f"📍 Currently: {st.session_state.current_page}")
 
 # ✅ Enhanced Footer
 st.markdown("---")
-if ENHANCED_AVAILABLE:
-    st.markdown(
-        """
-        <div style='text-align: center; color: #888;'>
-            🛡️ Crime Safety Travel Assistant | 🆕 Enhanced AI-Powered Dynamic Route Planning<br>
-            <small>🎯 Smart crime-aware routing with time-based pattern analysis | Official LAPD Data from LA City GeoHub</small>
+st.markdown(
+    """
+    <div style='text-align: center; color: #888; padding: 1rem; background: white; border-radius: 10px; margin-top: 2rem;'>
+        <div style='font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;'>
+            🛡️ Crime Safety Travel Assistant
         </div>
-        """, 
-        unsafe_allow_html=True
-    )
-else:
-    st.markdown(
-        """
-        <div style='text-align: center; color: #888;'>
-            🛡️ Crime Safety Travel Assistant | AI-Powered Route Planning with Crime Analysis<br>
+        <div style='font-size: 0.9rem;'>
+            AI-Powered Route Planning with Enhanced Crime Analysis<br>
             <small>Official LAPD Data from LA City GeoHub</small>
         </div>
-        """, 
-        unsafe_allow_html=True
-    )
+    </div>
+    """, 
+    unsafe_allow_html=True
+)
