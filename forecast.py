@@ -1,831 +1,1459 @@
-# AI-powered crime forecasting using SARIMAX for top 10 crimes with enhanced messaging.
-import pandas as pd
-import numpy as np
-from statsmodels.tsa.statespace.sarimax import SARIMAX
 import streamlit as st
-import plotly.graph_objects as go
+import pandas as pd
 import plotly.express as px
-from datetime import datetime, timedelta
-import warnings
-warnings.filterwarnings('ignore')
+import plotly.graph_objects as go
 
-@st.cache_data
-def load_data():
-    """Load and preprocess crime data"""
-    try:
-        df = pd.read_parquet("data/crime_data.parquet")
-        df['DATE OCC'] = pd.to_datetime(df['DATE OCC'], errors='coerce')
-        
-        # Clean and validate data - remove NaT values
-        df = df.dropna(subset=['DATE OCC', 'Crm Cd Desc', 'AREA NAME', 'Vict Sex'])
-        
-        # Sort by date to ensure proper time series
-        df = df.sort_values('DATE OCC')
-        
-        return df
-    except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
-        return pd.DataFrame()
+# ✅ Set page config with enhanced styling
+st.set_page_config(
+    page_title="🛡️ Crime Safety Travel Assistant", 
+    layout="wide",
+    initial_sidebar_state="expanded",
+    page_icon="🛡️"
+)
 
-def safe_strftime(date_val, format_str='%B %d, %Y'):
-    """Safely format datetime, handling NaT values"""
-    try:
-        if pd.isna(date_val) or pd.isnull(date_val):
-            return "Unknown Date"
-        return date_val.strftime(format_str)
-    except:
-        return "Invalid Date"
-
-def safe_numeric_conversion(value, default=0):
-    """Safely convert values to numeric, handling NaN/None cases"""
-    try:
-        if pd.isna(value) or pd.isnull(value) or value is None:
-            return default
-        if np.isnan(value) or np.isinf(value):
-            return default
-        return float(value)
-    except (ValueError, TypeError):
-        return default
-
-def safe_int_conversion(value, default=0):
-    """Safely convert values to integer, handling NaN/None cases"""
-    numeric_val = safe_numeric_conversion(value, default)
-    try:
-        return int(numeric_val)
-    except (ValueError, TypeError, OverflowError):
-        return default
-
-def prepare_time_series(df, crime_type, frequency='M'):
-    """
-    Prepare time series data for forecasting
-    frequency: 'D' for daily, 'W' for weekly, 'M' for monthly
-    """
-    try:
-        # Filter for specific crime type
-        crime_df = df[df['Crm Cd Desc'] == crime_type].copy()
-        
-        if crime_df.empty:
-            return pd.Series()
-        
-        crime_df['Count'] = 1
-        
-        # Create time series based on frequency
-        if frequency == 'D':
-            ts = crime_df.groupby('DATE OCC')['Count'].sum().resample('D').sum().fillna(0)
-        elif frequency == 'W':
-            ts = crime_df.groupby('DATE OCC')['Count'].sum().resample('W').sum().fillna(0)
-        else:  # Monthly
-            ts = crime_df.groupby('DATE OCC')['Count'].sum().resample('M').sum().fillna(0)
-        
-        # Remove leading and trailing zeros for better modeling
-        if (ts > 0).any():
-            first_nonzero = ts[ts > 0].index.min()
-            last_nonzero = ts[ts > 0].index.max()
-            
-            # Keep some context around the non-zero period
-            if frequency == 'M':
-                start_date = first_nonzero - pd.DateOffset(months=3)
-                end_date = last_nonzero + pd.DateOffset(months=1)
-            elif frequency == 'W':
-                start_date = first_nonzero - pd.DateOffset(weeks=4)
-                end_date = last_nonzero + pd.DateOffset(weeks=1)
-            else:  # Daily
-                start_date = first_nonzero - pd.DateOffset(days=30)
-                end_date = last_nonzero + pd.DateOffset(days=7)
-            
-            # Ensure we don't go beyond actual data range
-            start_date = max(start_date, ts.index.min())
-            end_date = min(end_date, ts.index.max())
-            
-            ts_filtered = ts[start_date:end_date]
-        else:
-            ts_filtered = ts
-        
-        return ts_filtered
-        
-    except Exception as e:
-        st.warning(f"Error preparing time series for {crime_type}: {str(e)}")
-        return pd.Series()
-
-def get_forecast_dates(last_date, periods, frequency='M'):
-    """Generate forecast dates starting from the day after last_date"""
+# ✅ Enhanced CSS styling for professional appearance
+st.markdown("""
+<style>
+    /* Main background and typography */
+    .main {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
     
-    try:
-        if pd.isna(last_date) or pd.isnull(last_date):
-            # Fallback to a default date if last_date is invalid
-            last_date = pd.Timestamp('2023-12-31')
-        
-        if frequency == 'M':
-            # For monthly, start from the first day of next month
-            if last_date.day == 1:
-                start_date = last_date + pd.DateOffset(months=1)
-            else:
-                start_date = (last_date + pd.DateOffset(months=1)).replace(day=1)
-            
-            forecast_dates = pd.date_range(
-                start=start_date,
-                periods=periods,
-                freq='MS'  # Month start
-            )
-        elif frequency == 'W':
-            # For weekly, start from next week
-            start_date = last_date + pd.DateOffset(weeks=1)
-            start_date = start_date - pd.Timedelta(days=start_date.weekday())  # Start of week
-            
-            forecast_dates = pd.date_range(
-                start=start_date,
-                periods=periods,
-                freq='W-MON'  # Weekly starting Monday
-            )
-        else:  # Daily
-            # For daily, start from next day
-            start_date = last_date + pd.Timedelta(days=1)
-            
-            forecast_dates = pd.date_range(
-                start=start_date,
-                periods=periods,
-                freq='D'
-            )
-        
-        return forecast_dates
-        
-    except Exception as e:
-        st.warning(f"Error generating forecast dates: {str(e)}")
-        # Return a fallback date range
-        fallback_start = pd.Timestamp('2024-01-01')
-        return pd.date_range(start=fallback_start, periods=periods, freq='MS')
-
-def clean_forecast_values(forecast_values):
-    """Clean forecast values by removing NaN, infinity, and negative values"""
-    try:
-        # Convert to numpy array for easier handling
-        if isinstance(forecast_values, pd.Series):
-            values = forecast_values.values
-        else:
-            values = np.array(forecast_values)
-        
-        # Replace NaN and infinity with 0
-        values = np.where(np.isnan(values) | np.isinf(values), 0, values)
-        
-        # Ensure non-negative values
-        values = np.maximum(values, 0)
-        
-        return values
-        
-    except Exception as e:
-        st.warning(f"Error cleaning forecast values: {str(e)}")
-        # Return array of zeros as fallback
-        return np.zeros(len(forecast_values))
-
-def get_top_crime_streets(df, area_name, top_n=3):
-    """Get top streets with highest crime count for a specific area"""
-    try:
-        # Filter data for the selected area
-        area_data = df[df['AREA NAME'] == area_name]
-        
-        # Count crimes by cross street - try different column names
-        if 'CROSS STREET' in area_data.columns:
-            street_crimes = area_data['CROSS STREET'].value_counts()
-        elif 'Cross Street' in area_data.columns:
-            street_crimes = area_data['Cross Street'].value_counts()
-        else:
-            return []
-        
-        # Remove NaN and empty values, get top streets
-        street_crimes = street_crimes.dropna()
-        street_crimes = street_crimes[street_crimes.index != '']
-        
-        top_streets = street_crimes.head(top_n).index.tolist()
-        
-        return top_streets
-    except Exception as e:
-        return []
-
-def get_most_affected_gender(df, area_name, crime_type):
-    """Get the gender most affected by a specific crime type in an area"""
-    try:
-        # Filter data for the selected area first
-        filtered_df = df[df['AREA NAME'] == area_name]
-        
-        if len(filtered_df) == 0:
-            return 'individuals'
-        
-        # Count all crimes by gender in that area (not just specific crime type)
-        gender_counts = filtered_df['Vict Sex'].value_counts()
-        
-        if len(gender_counts) == 0:
-            return 'individuals'
-        
-        # Get the gender with highest count
-        most_affected_code = gender_counts.index[0]
-        
-        # Convert gender codes to readable format
-        if most_affected_code == 'M':
-            return 'males'
-        elif most_affected_code == 'F':
-            return 'females'
-        else:
-            return 'individuals'
-            
-    except Exception as e:
-        return 'individuals'
-
-def calculate_risk_probability(df, area_name, crime_type, forecast_periods, selected_gender=None):
-    """Calculate risk probability based on actual historical crime data for the specific area and gender"""
-    try:
-        # Get historical data for the specific area
-        area_data = df[df['AREA NAME'] == area_name]
-        
-        # Apply gender filter if specified
-        if selected_gender:
-            area_data = area_data[area_data['Vict Sex'] == selected_gender]
-        
-        # Filter for specific crime type
-        crime_data = area_data[area_data['Crm Cd Desc'] == crime_type]
-        
-        if len(crime_data) == 0:
-            # Return different default based on gender if no specific data
-            if selected_gender == 'F':
-                return 8  # Slightly higher default for females in some crime types
-            elif selected_gender == 'M':
-                return 12  # Different default for males
-            return 5  # Default for "All"
-            
-        # Calculate monthly average from historical data
-        crime_data['YearMonth'] = crime_data['DATE OCC'].dt.to_period('M')
-        monthly_counts = crime_data.groupby('YearMonth').size()
-        
-        if len(monthly_counts) == 0:
-            return 5
-            
-        # Get actual statistics for this specific area, crime type, and gender combination
-        avg_monthly = monthly_counts.mean()
-        max_monthly = monthly_counts.max()
-        total_crimes_in_filtered_area = len(area_data)  # Total crimes for this area+gender combo
-        total_crime_type_in_filtered_area = len(crime_data)  # This crime type for area+gender combo
-        
-        # Calculate crime density (crimes per month relative to filtered area size)
-        months_of_data = len(monthly_counts)
-        if months_of_data == 0:
-            return 5
-            
-        crime_density = total_crime_type_in_filtered_area / months_of_data
-        
-        # Calculate percentage of this crime type in the filtered area
-        crime_type_percentage = (total_crime_type_in_filtered_area / total_crimes_in_filtered_area * 100) if total_crimes_in_filtered_area > 0 else 0
-        
-        # Dynamic probability calculation based on actual filtered data
-        base_probability = min(crime_type_percentage * 2.5, 35)  # Base on actual crime type prevalence
-        
-        # Gender-specific adjustments based on actual data patterns
-        if selected_gender == 'F':
-            # Check if females are disproportionately affected in this area for this crime
-            all_area_data = df[df['AREA NAME'] == area_name]
-            female_ratio = len(all_area_data[all_area_data['Vict Sex'] == 'F']) / len(all_area_data) if len(all_area_data) > 0 else 0.5
-            if female_ratio > 0.6:  # If females are more than 60% of victims
-                base_probability *= 1.3
-            elif female_ratio < 0.3:  # If females are less than 30% of victims
-                base_probability *= 0.7
-        elif selected_gender == 'M':
-            # Check if males are disproportionately affected in this area for this crime
-            all_area_data = df[df['AREA NAME'] == area_name]
-            male_ratio = len(all_area_data[all_area_data['Vict Sex'] == 'M']) / len(all_area_data) if len(all_area_data) > 0 else 0.5
-            if male_ratio > 0.6:  # If males are more than 60% of victims
-                base_probability *= 1.3
-            elif male_ratio < 0.3:  # If males are less than 30% of victims
-                base_probability *= 0.7
-        
-        # Adjust based on monthly average intensity for the filtered data
-        if avg_monthly >= 10:
-            intensity_multiplier = 1.8
-        elif avg_monthly >= 5:
-            intensity_multiplier = 1.5
-        elif avg_monthly >= 2:
-            intensity_multiplier = 1.2
-        elif avg_monthly >= 1:
-            intensity_multiplier = 1.0
-        else:
-            intensity_multiplier = 0.8
-        
-        # Adjust based on recent trend (last 6 months vs overall average) for filtered data
-        recent_months = monthly_counts.tail(6)
-        if len(recent_months) >= 3:
-            recent_avg = recent_months.mean()
-            trend_multiplier = min(recent_avg / avg_monthly, 2.0) if avg_monthly > 0 else 1.0
-        else:
-            trend_multiplier = 1.0
-        
-        # Calculate final probability
-        final_probability = base_probability * intensity_multiplier * trend_multiplier
-        
-        # Ensure realistic bounds (3% to 85%)
-        final_probability = max(3, min(85, int(final_probability)))
-        
-        return final_probability
-        
-    except Exception as e:
-        # Return a hash-based number that varies by area, crime type, AND gender
-        area_hash = hash(area_name + crime_type + str(selected_gender)) % 60
-        return max(5, min(50, 8 + area_hash))
-
-def get_crime_risk_streets(df, area_name=None, gender=None, crime_types=None, top_n=5):
-    """Get high-risk streets based on crime data"""
-    try:
-        filtered_df = df.copy()
-        
-        # Apply filters
-        if area_name:
-            filtered_df = filtered_df[filtered_df['AREA NAME'] == area_name]
-        
-        if gender:
-            filtered_df = filtered_df[filtered_df['Vict Sex'] == gender]
-        
-        if crime_types:
-            filtered_df = filtered_df[filtered_df['Crm Cd Desc'].isin(crime_types)]
-        
-        # Get streets with most crimes
-        if 'CROSS STREET' in filtered_df.columns:
-            street_crimes = filtered_df['CROSS STREET'].value_counts().head(top_n)
-            return street_crimes.index.tolist()
-        elif 'Cross Street' in filtered_df.columns:
-            street_crimes = filtered_df['Cross Street'].value_counts().head(top_n)
-            return street_crimes.index.tolist()
-        else:
-            # Fallback to area names if cross streets not available
-            area_crimes = filtered_df['AREA NAME'].value_counts().head(top_n)
-            return area_crimes.index.tolist()
-            
-    except Exception as e:
-        st.warning(f"Error getting risk streets: {str(e)}")
-        return []
-
-def generate_intelligent_forecast_message(forecasts, df, area_name=None, gender=None, forecast_period="Month"):
-    """Generate intelligent messaging based on forecast results and filters"""
+    /* Sidebar styling */
+    .sidebar .sidebar-content {
+        background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
     
-    try:
-        if not forecasts:
-            return None
-        
-        # Analyze forecast results
-        total_predicted = sum([forecast.sum() for forecast in forecasts.values()])
-        crime_types = list(forecasts.keys())
-        most_predicted_crime = max(forecasts.items(), key=lambda x: x[1].sum())
-        
-        # Calculate probability (simplified approach)
-        historical_crimes = len(df)
-        if area_name:
-            historical_crimes = len(df[df['AREA NAME'] == area_name])
-        if gender:
-            if area_name:
-                historical_crimes = len(df[(df['AREA NAME'] == area_name) & (df['Vict Sex'] == gender)])
-            else:
-                historical_crimes = len(df[df['Vict Sex'] == gender])
-        
-        # Estimate probability based on forecast vs historical average
-        if historical_crimes > 0:
-            probability = min(int((total_predicted / (historical_crimes / 12)) * 100), 95)  # Cap at 95%
-        else:
-            probability = 25  # Default probability
-        
-        # Get high-risk streets
-        risk_streets = get_crime_risk_streets(df, area_name, gender, crime_types, top_n=3)
-        
-        # Create personalized message
-        location_text = f"in {area_name}" if area_name else "in the analyzed areas"
-        gender_text = {"M": "males", "F": "females", "X": "individuals"}.get(gender, "individuals")
-        
-        # Time period mapping
-        period_text = {
-            "Week": "the coming weeks",
-            "Month": "the next 3 months", 
-            "Quarter": "the next 6 months"
-        }.get(forecast_period, "the forecast period")
-        
-        # Generate message components
-        crime_focus = most_predicted_crime[0].lower()
-        predicted_count = int(most_predicted_crime[1].sum())
-        
-        message_data = {
-            'location': location_text,
-            'crime_type': crime_focus,
-            'gender': gender_text,
-            'probability': probability,
-            'period': period_text,
-            'predicted_count': predicted_count,
-            'total_crimes': len(crime_types),
-            'risk_streets': risk_streets[:3],  # Top 3 streets
-            'area_name': area_name or "the selected areas"
+    /* Header styling */
+    .main-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    
+    /* Feature cards */
+    .feature-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        margin: 1rem 0;
+        border-left: 4px solid #667eea;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .feature-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+    }
+    
+    /* Buttons */
+    .stButton > button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 1.5rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    /* Metrics */
+    .metric-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        text-align: center;
+    }
+    
+    /* Success/Warning/Error styling */
+    .stSuccess {
+        background: linear-gradient(135deg, #4CAF50, #45a049);
+        border-radius: 8px;
+    }
+    
+    .stWarning {
+        background: linear-gradient(135deg, #ff9800, #f57c00);
+        border-radius: 8px;
+    }
+    
+    .stError {
+        background: linear-gradient(135deg, #f44336, #d32f2f);
+        border-radius: 8px;
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        border-radius: 8px;
+        font-weight: 600;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background: white;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-weight: 600;
+    }
+    
+    /* Custom font sizes */
+    .big-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+    
+    .medium-title {
+        font-size: 1.8rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+    
+    .small-title {
+        font-size: 1.2rem;
+        font-weight: 500;
+        color: #666;
+    }
+    
+    /* Introduction page specific styling */
+    .intro-hero {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 3rem 2rem;
+        border-radius: 20px;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    }
+    
+    /* Safety images styling */
+    .safety-images {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 3rem;
+        margin: 2rem 0;
+        padding: 2rem;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 15px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    }
+    
+    .safety-image-container {
+        position: relative;
+        width: 240px;
+        height: 180px;
+    }
+    
+    .safety-pins-bg {
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #87CEEB 0%, #4682B4 100%);
+        border-radius: 10px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .safety-pin {
+        position: absolute;
+        width: 30px;
+        height: 15px;
+        border: 2px solid #C0C0C0;
+        border-radius: 20px 20px 0 0;
+        background: transparent;
+    }
+    
+    .safety-pin::after {
+        content: '';
+        position: absolute;
+        bottom: -8px;
+        left: 2px;
+        width: 2px;
+        height: 20px;
+        background: #C0C0C0;
+    }
+    
+    .pin1 { top: 20px; left: 30px; transform: rotate(-15deg); }
+    .pin2 { top: 40px; right: 40px; transform: rotate(25deg); }
+    .pin3 { bottom: 60px; left: 20px; transform: rotate(45deg); }
+    .pin4 { bottom: 30px; right: 20px; transform: rotate(-30deg); }
+    .pin5 { top: 70px; left: 80px; transform: rotate(10deg); }
+    
+    .location-pin {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 60px;
+        height: 80px;
+        z-index: 2;
+    }
+    
+    .location-pin svg {
+        width: 100%;
+        height: 100%;
+        filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+    }
+    
+    .safety-text {
+        flex: 1;
+        max-width: 300px;
+    }
+    
+    .safety-byline {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #4682B4;
+        text-align: left;
+        line-height: 1.2;
+        margin: 0;
+    }
+    
+    @media (max-width: 768px) {
+        .safety-images {
+            flex-direction: column;
+            gap: 2rem;
         }
         
-        return message_data
-        
-    except Exception as e:
-        st.warning(f"Error generating forecast message: {str(e)}")
-        return None
+        .safety-byline {
+            text-align: center;
+            font-size: 2rem;
+        }
+    }
+    
+    .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin: 2rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-def display_intelligent_forecast_message(message_data, df, area_name, selected_gender, forecast_months):
-    """Display the simplified forecast message with high-risk prediction and street safety advisory"""
+# ✅ Import modules with error handling
+try:
+    from forecast import run_forecast
+except ImportError:
+    def run_forecast():
+        st.error("Forecast module not available")
+
+try:
+    from clustering import run_clustering_ui
+except ImportError:
+    def run_clustering_ui():
+        st.error("Clustering module not available")
+
+# Import enhanced crime alerts system with official LAPD data
+try:
+    from crime_alerts import add_crime_alert_integration, show_crime_alerts_sidebar, run_crime_alerts_page
+    ALERTS_AVAILABLE = True
+except ImportError:
+    def add_crime_alert_integration():
+        pass
+    def show_crime_alerts_sidebar():
+        return 0
+    def run_crime_alerts_page():
+        st.error("Crime alerts system not available. Please ensure crime_alerts.py is in the project directory.")
+    ALERTS_AVAILABLE = False
+
+try:
+    # Import the ENHANCED system with dynamic safety analysis
+    from free_api_utils import compute_and_display_safe_route as enhanced_route
     
-    if not message_data or not area_name:
-        return
-    
-    try:
-        # Get top crime type for the area
-        area_data = df[df['AREA NAME'] == area_name]
-        top_crime = area_data['Crm Cd Desc'].value_counts().index[0] if len(area_data) > 0 else "theft plain - petty ($950 & under)"
+    def run_safe_route_mapping():
+        """Enhanced Safe Route Mapping with Dynamic Crime-Aware Analysis"""
+        st.markdown("### 🗺️ Smart Crime-Aware Route Planning")
+        st.markdown("**AI-powered routing that adapts to real crime patterns and time-of-day risk levels.**")
         
-        # Calculate risk probability with gender consideration - NOW WITH 5 PARAMETERS
-        risk_probability = calculate_risk_probability(df, area_name, top_crime, forecast_months, selected_gender)
+        # Load area data
+        @st.cache_data
+        def load_area_data():
+            import pandas as pd
+            try:
+                df = pd.read_parquet("data/crime_data.parquet")
+                return sorted(df['AREA NAME'].dropna().unique())
+            except Exception as e:
+                st.error(f"Error loading area data: {e}")
+                return []
         
-        # Create time period text
-        period_text = "the next month" if forecast_months == 1 else f"the next {forecast_months} months"
+        unique_areas = load_area_data()
         
-        # Create risk prediction message based on gender selection
-        if selected_gender is None:  # This means "All" was selected
-            # Only show gender-specific risk when "All" is selected
-            most_affected = get_most_affected_gender(df, area_name, top_crime)
-            risk_message = f"<strong>High-Risk Crime Prediction in <strong>{area_name}</strong> which shows a {risk_probability}% probability of experiencing {top_crime.lower()} incidents during {period_text}, with {most_affected} being particularly at Risk</strong>"
-        else:
-            # Don't mention gender when specific gender is selected
-            risk_message = f"<strong>High-Risk Crime Prediction in <strong>{area_name}</strong> which shows a {risk_probability}% probability of experiencing {top_crime.lower()} incidents during {period_text}</strong>"
+        if not unique_areas:
+            st.error("❌ No area data available. Please ensure data/crime_data.parquet exists.")
+            return
         
-        # Get top crime streets for the area and clean them
-        top_streets = get_top_crime_streets(df, area_name, top_n=3)
-        
-        # Clean and format street names properly
-        if top_streets:
-            # Clean street names by removing extra spaces and formatting properly
-            cleaned_streets = []
-            for street in top_streets:
-                if street and str(street).strip() and str(street).strip() != 'nan':
-                    # Remove extra spaces and clean the street name
-                    clean_street = ' '.join(str(street).split())
-                    cleaned_streets.append(clean_street)
+        # Enhanced route planning form with new features
+        with st.form("enhanced_safe_route_mapping_form"):
+            st.markdown("### 📍 Smart Route Configuration")
             
-            if cleaned_streets:
-                streets_text = ", ".join(cleaned_streets)
-                street_message = f"Based on historical crime data, exercise extra caution on streets: {streets_text}"
-            else:
-                street_message = f"Based on historical crime data, exercise extra caution when in the {area_name} area."
-        else:
-            street_message = f"Based on historical crime data, exercise extra caution when in the {area_name} area."
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                start_area = st.selectbox("🏁 Start Area", unique_areas,
+                    help="Select your starting location")
+                travel_mode = st.selectbox("🚗 Travel Mode", 
+                    ["driving", "walking", "cycling"],
+                    format_func=lambda x: {"driving": "🚗 Driving", "walking": "🚶 Walking", "cycling": "🚴 Cycling"}[x],
+                    help="Routes will be optimized for your selected travel mode")
+            
+            with col2:
+                end_area = st.selectbox("🎯 Destination Area", unique_areas,
+                    help="Select your destination")
+                
+                # ENHANCED: New safety priority with clear descriptions
+                safety_priority = st.selectbox("🛡️ Safety Priority Level", 
+                    ["balanced", "maximum_safety", "speed_priority"],
+                    format_func=lambda x: {
+                        "balanced": "⚖️ Balanced (All route types)", 
+                        "maximum_safety": "🛡️ Maximum Safety (Green/Yellow only)", 
+                        "speed_priority": "⚡ Speed Priority (May include risky routes)"
+                    }[x],
+                    help="Controls which route types are shown based on actual crime risk analysis")
+            
+            # ENHANCED: New time-based crime analysis
+            st.markdown("#### ⏰ Time-Based Crime Analysis")
+            col3, col4 = st.columns(2)
+            
+            with col3:
+                # ENHANCED: More specific time periods
+                time_of_travel = st.selectbox("⏰ Time of Travel", 
+                    ["Any Time", "Morning (6-12)", "Afternoon (12-16)", "Evening (16-18)", "Night (18-6)"],
+                    help="🆕 Crime patterns vary by time - routes will adapt accordingly")
+                
+                show_crime_overlay = st.checkbox("🔍 Show Crime Risk Zones", value=True,
+                    help="Display crime hotspots with accurate severity colors on the map")
+            
+            with col4:
+                # Advanced filtering options
+                gender_profile = st.selectbox("👤 Traveler Profile", 
+                    ["Any", "Male", "Female"], 
+                    help="Crime patterns may vary by gender demographics")
+                
+                avoid_high_crime = st.checkbox("🚫 Strictly Avoid High Crime Areas", value=True,
+                    help="🆕 Prioritize routes that completely avoid known high-crime zones")
+            
+            # ENHANCED: Dynamic button text based on safety priority
+            safety_button_text = {
+                "maximum_safety": "🛡️ Generate Safest Routes Only",
+                "balanced": "⚖️ Generate Balanced Route Options", 
+                "speed_priority": "⚡ Generate All Route Options (Including Risky)"
+            }
+            
+            generate_route = st.form_submit_button(
+                safety_button_text[safety_priority], 
+                type="primary", 
+                use_container_width=True
+            )
         
-        # Create combined message box with blue/pink gradient styling to match charts
-        st.markdown("---")
-        st.markdown(f"""
-        <div style="
-            background: linear-gradient(135deg, #e3f2fd 0%, #fce4ec 100%);
-            border: 2px solid #2196f3;
-            border-radius: 10px;
-            padding: 20px;
-            margin: 20px 0;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        ">
-            <div style="
-                color: #1565c0;
-                font-size: 16px;
-                font-weight: 500;
-                text-align: left;
-                line-height: 1.8;
-            ">
-                {risk_message}
-                <br><br>
-                <div style="font-size: 15px; font-weight: 400;">
-                    {street_message}
-                </div>
+        # Process route generation with enhanced features
+        if generate_route:
+            if start_area == end_area:
+                st.warning("⚠️ Please select different start and destination areas.")
+            else:
+                # Show what the enhanced system will do
+                st.markdown("---")
+                st.subheader(f"🧠 Smart Routes: {start_area} → {end_area}")
+                
+                # Show current enhanced settings
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("🚗 Travel Mode", travel_mode.title())
+                with col2:
+                    safety_display = safety_priority.replace("_", " ").title()
+                    st.metric("🛡️ Safety Level", safety_display)
+                with col3:
+                    st.metric("⏰ Time Period", time_of_travel)
+                with col4:
+                    profile_display = "Standard" if gender_profile == "Any" else gender_profile
+                    st.metric("👤 Profile", profile_display)
+                
+                with st.spinner("🧠 Enhanced AI analyzing crime patterns and generating intelligent routes..."):
+                    # Add progress feedback
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    status_text.text(f"📊 Loading {time_of_travel} crime data...")
+                    progress_bar.progress(20)
+                    
+                    status_text.text("🎯 Analyzing crime severity and locations...")
+                    progress_bar.progress(40)
+                    
+                    status_text.text("🛣️ Generating route variations...")
+                    progress_bar.progress(60)
+                    
+                    status_text.text("🧮 Calculating crime zone proximity for each route...")
+                    progress_bar.progress(80)
+                    
+                    status_text.text("🎨 Applying dynamic safety colors...")
+                    progress_bar.progress(90)
+                    
+                    # ENHANCED: Call enhanced routing with all new parameters
+                    force_safe = (safety_priority == "maximum_safety")
+                    success = enhanced_route(
+                        start_area, 
+                        end_area, 
+                        travel_mode, 
+                        force_safe, 
+                        api_keys=None,
+                        safety_priority=safety_priority,
+                        time_of_travel=time_of_travel
+                    )
+                    
+                    progress_bar.progress(100)
+                    status_text.text("✅ Enhanced route analysis complete!")
+                    
+                    # Clear progress indicators
+                    progress_bar.empty()
+                    status_text.empty()
+                    
+                    if success:
+                        # Enhanced success feedback with contextual information
+                        st.success("🎯 Smart routes generated with enhanced crime analysis!")
+                        
+                        # THE MAP WOULD BE DISPLAYED HERE BY THE enhanced_route FUNCTION
+                        
+                        # REMOVED THE DUPLICATE ROUTE SAFETY GUIDE THAT WAS HERE
+                        # The Route Safety Guide now appears only AFTER the map, 
+                        # as part of the enhanced_route function output
+                        
+                        # Provide contextual feedback based on settings
+                        if safety_priority == "maximum_safety":
+                            st.info("🛡️ **Maximum Safety Mode**: Only showing routes with minimal crime zone exposure")
+                        elif safety_priority == "speed_priority":
+                            st.warning("⚡ **Speed Priority Mode**: Showing fastest routes - some may pass through crime areas")
+                        else:
+                            st.info("⚖️ **Balanced Mode**: Showing optimal mix of safe and efficient route options")
+                        
+                        # Time-specific contextual advice
+                        if "Night" in time_of_travel:
+                            st.warning("🌙 **Night Travel Alert**: Crime rates are higher at night. Extra precautions strongly recommended.")
+                        elif "Evening" in time_of_travel:
+                            st.info("🌆 **Evening Travel**: Moderate risk period. Stay alert and use well-lit routes.")
+                        elif "Morning" in time_of_travel:
+                            st.success("☀️ **Morning Travel**: Generally safest time period for travel.")
+                        
+                        # Enhanced action buttons
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            if st.button("🔄 Try Different Safety Level", key="change_safety"):
+                                new_safety = "maximum_safety" if safety_priority != "maximum_safety" else "balanced"
+                                st.info(f"💡 Try changing Safety Priority to '{new_safety.replace('_', ' ').title()}' above for different route options.")
+                        
+                        with col2:
+                            if st.button("⏰ Analyze Different Time", key="change_time"):
+                                st.info("📅 Try different times above to see how crime patterns affect your routes throughout the day.")
+                        
+                        with col3:
+                            if st.button("📍 Different Route", key="change_route"):
+                                st.info("🗺️ Select different start/destination areas above to explore other routes.")
+                    
+                    else:
+                        st.error("❌ Unable to generate routes for selected criteria.")
+                        
+                        # Enhanced troubleshooting with specific guidance
+                        with st.expander("🔧 Enhanced Troubleshooting", expanded=True):
+                            st.markdown(f"""
+                            **🔍 Diagnosis for Your Settings:**
+                            
+                            **📍 Selected Route:** {start_area} → {end_area}
+                            **⏰ Time Period:** {time_of_travel}
+                            **🛡️ Safety Priority:** {safety_priority.replace('_', ' ').title()}
+                            **🚗 Travel Mode:** {travel_mode.title()}
+                            
+                            **🚨 Possible Issues:**
+                            
+                            1. **⏰ Time Filtering Too Restrictive:**
+                               - {time_of_travel} may have limited crime data
+                               - **Solution:** Try "Any Time" for broader coverage
+                            
+                            2. **🛡️ Safety Priority Too Strict:**
+                               - Maximum Safety mode may be too restrictive for this area
+                               - **Solution:** Try "Balanced" mode first
+                            
+                            3. **📍 Area Data Insufficient:**
+                               - Selected areas may have limited location data
+                               - **Solution:** Try well-known, major areas
+                            
+                            4. **🚫 No Safe Routes Available:**
+                               - Area combination may not have safe route options
+                               - **Solution:** Consider different areas or travel times
+                            
+                            **✅ Recommended Actions:**
+                            - Set Safety Priority to "Balanced"
+                            - Use "Any Time" initially
+                            - Select major metropolitan areas
+                            - Try different travel modes
+                            """)
+    
+    # COMPLETE Enhanced Area Analysis function from second attachment
+    def run_area_analysis():
+        """Enhanced Area Analysis functionality with uniform purple color scheme"""
+        st.markdown("### 📊 Crime Analysis by Area")
+        
+        # Load area data
+        @st.cache_data
+        def load_crime_data_for_analysis():
+            try:
+                df = pd.read_parquet("data/crime_data.parquet")
+                df = df.dropna(subset=["LAT", "LON", "AREA NAME"])
+                
+                # Extract time of day from TIME OCC if not present
+                if 'Time of Day' not in df.columns and 'TIME OCC' in df.columns:
+                    # Convert TIME OCC to proper time format
+                    df['TIME OCC'] = pd.to_numeric(df['TIME OCC'], errors='coerce')
+                    df['Hour'] = (df['TIME OCC'] // 100).fillna(12).astype(int)
+                    
+                    # Create time of day categories
+                    def categorize_time(hour):
+                        if 6 <= hour < 12:
+                            return "Morning"
+                        elif 12 <= hour < 18:
+                            return "Afternoon"
+                        elif 18 <= hour < 22:
+                            return "Evening"
+                        else:
+                            return "Night"
+                    
+                    df['Time of Day'] = df['Hour'].apply(categorize_time)
+                
+                # Enhanced crime severity classification (matching route system)
+                def classify_enhanced_crime_severity(row):
+                    crime_desc = str(row.get('Crm Cd Desc', '')).upper()
+                    
+                    # High severity crimes (Red level)
+                    high_severity = ['ROBBERY', 'ASSAULT', 'BURGLARY', 'RAPE', 'HOMICIDE', 'MURDER',
+                                   'KIDNAPPING', 'ARSON', 'SHOTS FIRED', 'CRIMINAL THREATS', 'BATTERY']
+                    
+                    if any(crime in crime_desc for crime in high_severity):
+                        return 'High Risk'
+                    
+                    # Medium severity crimes (Yellow level) 
+                    medium_severity = ['THEFT', 'VANDALISM', 'FRAUD', 'SHOPLIFTING', 'VEHICLE',
+                                     'STOLEN', 'TRESPASSING', 'PICKPOCKET']
+                    
+                    if any(crime in crime_desc for crime in medium_severity):
+                        return 'Medium Risk'
+                    
+                    return 'Low Risk'
+                
+                df['Risk Level'] = df.apply(classify_enhanced_crime_severity, axis=1)
+                
+                return df
+            except Exception as e:
+                st.error(f"Error loading crime data: {e}")
+                return None
+        
+        crime_df = load_crime_data_for_analysis()
+        
+        if crime_df is None:
+            st.error("Could not load crime data for analysis.")
+            return
+        
+        unique_areas = sorted(crime_df["AREA NAME"].unique())
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            selected_area = st.selectbox("🏘️ Select Area for Analysis", unique_areas, key="analysis_area")
+        
+        with col2:
+            analysis_timeframe = st.selectbox("📅 Time Period", 
+                ["All Time", "Last Year", "Last 6 Months", "Last 3 Months"])
+        
+        if selected_area:
+            # Filter data for selected area
+            area_data = crime_df[crime_df["AREA NAME"] == selected_area]
+            
+            # Apply time period filtering
+            if analysis_timeframe != "All Time":
+                from datetime import datetime, timedelta
+                current_date = datetime.now()
+                
+                if analysis_timeframe == "Last Year":
+                    cutoff_date = current_date - timedelta(days=365)
+                elif analysis_timeframe == "Last 6 Months":
+                    cutoff_date = current_date - timedelta(days=180)
+                elif analysis_timeframe == "Last 3 Months":
+                    cutoff_date = current_date - timedelta(days=90)
+                
+                # Filter based on DATE OCC if available
+                if 'DATE OCC' in area_data.columns:
+                    try:
+                        area_data['DATE OCC'] = pd.to_datetime(area_data['DATE OCC'], errors='coerce')
+                        area_data = area_data[area_data['DATE OCC'] >= cutoff_date]
+                    except:
+                        st.info(f"Note: Time filtering not applied - date format issues in data")
+            
+            if not area_data.empty:
+                # Key metrics with improved formatting and purple accent
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    total_incidents = len(area_data)
+                    st.markdown(f"""
+                    <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #9c27b0;">
+                        <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
+                            📊 Total Incidents
+                        </div>
+                        <div style="color: #262730; font-size: 18px; font-weight: 700; line-height: 1.2;">
+                            {total_incidents:,}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    if 'Vict Sex' in area_data.columns:
+                        # Clean and categorize victim sex data into exactly 3 categories
+                        victim_sex_cleaned = area_data['Vict Sex'].fillna('Others').str.upper().str.strip()
+                        
+                        # Map all variations to 3 categories only
+                        def categorize_victim_sex(sex):
+                            if sex in ['M', 'MALE']:
+                                return 'Male'
+                            elif sex in ['F', 'FEMALE']:
+                                return 'Female'
+                            else:  # X, H, -, NaN, Others, etc.
+                                return 'Others'
+                        
+                        victim_sex_final = victim_sex_cleaned.apply(categorize_victim_sex)
+                        
+                        # Get most common victim category
+                        most_common_victim = victim_sex_final.mode()[0] if not victim_sex_final.mode().empty else "N/A"
+                        
+                        st.markdown(f"""
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #9c27b0;">
+                            <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
+                                👥 Most Affected
+                            </div>
+                            <div style="color: #262730; font-size: 18px; font-weight: 700; line-height: 1.2;">
+                                {most_common_victim}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.info("Victim data not available")
+                
+                with col3:
+                    if 'Time of Day' in area_data.columns:
+                        peak_time = area_data['Time of Day'].mode()[0] if not area_data['Time of Day'].mode().empty else "N/A"
+                        
+                        st.markdown(f"""
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #9c27b0;">
+                            <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
+                                ⏰ Peak Crime Time
+                            </div>
+                            <div style="color: #262730; font-size: 18px; font-weight: 700; line-height: 1.2;">
+                                {peak_time}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.info("Time data not available")
+                
+                with col4:
+                    if 'Crm Cd Desc' in area_data.columns:
+                        top_crime = area_data['Crm Cd Desc'].mode()[0] if not area_data['Crm Cd Desc'].mode().empty else "N/A"
+                        # Display full crime text with smaller font using HTML
+                        crime_text = str(top_crime)
+                        
+                        # Use HTML to make the text smaller and wrap if needed
+                        st.markdown(f"""
+                        <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 4px solid #9c27b0;">
+                            <div style="color: #262730; font-size: 14px; font-weight: 600; margin-bottom: 4px;">
+                                🚨 Most Common Crime
+                            </div>
+                            <div style="color: #262730; font-size: 11px; line-height: 1.2; word-wrap: break-word; font-weight: 500;">
+                                {crime_text}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.info("Crime description data not available")
+                
+                # Detailed analysis
+                if st.button("📈 Show Detailed Analysis", key="detailed_analysis"):
+                    st.markdown("---")
+                    st.subheader(f"Detailed Analysis for {selected_area}")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if 'Time of Day' in area_data.columns:
+                            st.markdown("#### 🕐 Crime Distribution by Time of Day")
+                            time_dist = area_data['Time of Day'].value_counts()
+                            
+                            # Calculate percentages
+                            time_percentages = (time_dist / time_dist.sum() * 100).round(1)
+                            
+                            # Purple color scheme for time distribution
+                            time_colors = ['#9c88ff', '#7c4dff', '#651fff', '#6200ea']
+                            fig_time = go.Figure(data=[
+                                go.Bar(
+                                    x=time_dist.index,
+                                    y=time_dist.values,
+                                    marker_color=time_colors[:len(time_dist)],
+                                    text=[f"{pct}%" for pct in time_percentages.values],
+                                    textposition='auto'
+                                )
+                            ])
+                            fig_time.update_layout(
+                                title="Crime Distribution by Time of Day",
+                                xaxis_title="Time of Day",
+                                yaxis_title="Number of Incidents",
+                                showlegend=False,
+                                height=400
+                            )
+                            st.plotly_chart(fig_time, use_container_width=True)
+                    
+                    with col2:
+                        if 'Vict Sex' in area_data.columns:
+                            st.markdown("#### 👥 Victim Distribution by Gender")
+                            # Clean and categorize victim sex data into exactly 3 categories
+                            victim_sex_cleaned = area_data['Vict Sex'].fillna('Others').str.upper().str.strip()
+                            
+                            # Map all variations to 3 categories only
+                            def categorize_victim_sex(sex):
+                                if sex in ['M', 'MALE']:
+                                    return 'Male'
+                                elif sex in ['F', 'FEMALE']:
+                                    return 'Female'
+                                else:  # X, H, -, NaN, Others, etc.
+                                    return 'Others'
+                            
+                            victim_sex_final = victim_sex_cleaned.apply(categorize_victim_sex)
+                            
+                            # Create clean distribution with exactly 3 categories
+                            gender_dist = victim_sex_final.value_counts()
+                            
+                            # Calculate percentages
+                            gender_percentages = (gender_dist / gender_dist.sum() * 100).round(1)
+                            
+                            # Purple color scheme for gender distribution
+                            gender_colors = ['#b388ff', '#9575cd', '#7e57c2']
+                            fig_gender = go.Figure(data=[
+                                go.Bar(
+                                    x=gender_dist.index,
+                                    y=gender_dist.values,
+                                    marker_color=gender_colors[:len(gender_dist)],
+                                    text=[f"{pct}%" for pct in gender_percentages.values],
+                                    textposition='auto'
+                                )
+                            ])
+                            fig_gender.update_layout(
+                                title="Victim Distribution by Gender",
+                                xaxis_title="Gender",
+                                yaxis_title="Number of Incidents",
+                                showlegend=False,
+                                height=400
+                            )
+                            st.plotly_chart(fig_gender, use_container_width=True)
+                    
+                    # Add victim distribution by age group
+                    col3, col4 = st.columns(2)
+                    
+                    with col3:
+                        if 'Vict Age' in area_data.columns:
+                            st.markdown("#### 👶👦👨👴 Victim Distribution by Age Group")
+                            
+                            # Clean age data and convert to numeric
+                            victim_ages = pd.to_numeric(area_data['Vict Age'], errors='coerce')
+                            
+                            # Define age group categorization function (only for valid ages)
+                            def categorize_age_group(age):
+                                if pd.isna(age) or age < 0 or age > 120:  # Filter out invalid ages
+                                    return None  # Will be filtered out
+                                elif age < 12:
+                                    return 'Children (0-11)'
+                                elif age < 18:
+                                    return 'Adolescents (12-17)'
+                                elif age < 40:
+                                    return 'Adults (18-39)'
+                                elif age < 60:
+                                    return 'Middle-aged (40-59)'
+                                else:
+                                    return 'Elderly (60+)'
+                            
+                            # Apply age group categorization and filter out invalid ages
+                            age_groups = victim_ages.apply(categorize_age_group)
+                            age_groups_valid = age_groups.dropna()  # Remove None values (invalid ages)
+                            
+                            # Create age group distribution (only valid ages)
+                            age_dist = age_groups_valid.value_counts()
+                            
+                            # Reorder for logical display (youngest to oldest)
+                            desired_order = ['Children (0-11)', 'Adolescents (12-17)', 'Adults (18-39)', 
+                                           'Middle-aged (40-59)', 'Elderly (60+)']
+                            age_dist_ordered = age_dist.reindex([cat for cat in desired_order if cat in age_dist.index])
+                            
+                            # Calculate percentages
+                            age_percentages = (age_dist_ordered / age_dist_ordered.sum() * 100).round(1)
+                            
+                            # Purple color scheme for age distribution
+                            age_colors = ['#e1bee7', '#ce93d8', '#ba68c8', '#ab47bc', '#9c27b0']
+                            fig_age = go.Figure(data=[
+                                go.Bar(
+                                    x=age_dist_ordered.index,
+                                    y=age_dist_ordered.values,
+                                    marker_color=age_colors[:len(age_dist_ordered)],
+                                    text=[f"{pct}%" for pct in age_percentages.values],
+                                    textposition='auto'
+                                )
+                            ])
+                            fig_age.update_layout(
+                                title="Victim Distribution by Age Group",
+                                xaxis_title="Age Group",
+                                yaxis_title="Number of Incidents",
+                                showlegend=False,
+                                height=400,
+                                xaxis=dict(tickangle=-45)
+                            )
+                            st.plotly_chart(fig_age, use_container_width=True)
+                    
+                    with col4:
+                        # Add some statistics about age distribution
+                        if 'Vict Age' in area_data.columns:
+                            st.markdown("#### 📊 Age Group Statistics")
+                            
+                            # Calculate statistics
+                            victim_ages_clean = pd.to_numeric(area_data['Vict Age'], errors='coerce')
+                            valid_ages = victim_ages_clean.dropna()
+                            valid_ages = valid_ages[(valid_ages >= 0) & (valid_ages <= 120)]  # Filter realistic ages
+                            
+                            if len(valid_ages) > 0:
+                                avg_age = valid_ages.mean()
+                                median_age = valid_ages.median()
+                                # Use only valid age groups for most vulnerable calculation
+                                most_vulnerable_group = age_groups_valid.value_counts().index[0] if len(age_groups_valid.value_counts()) > 0 else "No data"
+                                
+                                st.markdown(f"""
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #9c27b0;">
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>📈 Average Age:</strong> {avg_age:.1f} years
+                                    </div>
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>📊 Median Age:</strong> {median_age:.0f} years
+                                    </div>
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>🎯 Most Affected Group:</strong><br>
+                                        <span style="color: #9c27b0; font-weight: 600;">{most_vulnerable_group}</span>
+                                    </div>
+                                    <div style="font-size: 11px; color: #6c757d; margin-top: 10px;">
+                                        Based on {len(valid_ages):,} valid age records
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            else:
+                                st.info("No valid age data available for analysis")
+                        else:
+                            st.info("Age data not available in this dataset")
+                    
+                    # Add Crime Risk Levels Distribution Chart - FIXED VERSION with purple colors
+                    col5, col6 = st.columns(2)
+                    
+                    with col5:
+                        if 'Risk Level' in area_data.columns:
+                            st.markdown("#### 🚨 Crime Risk Levels Distribution")
+                            risk_dist = area_data['Risk Level'].value_counts()
+                            
+                            # Create enhanced risk chart with colors - ONLY PERCENTAGES
+                            risk_colors = {'High Risk': '#6a1b9a', 'Medium Risk': '#8e24aa', 'Low Risk': '#ab47bc'}
+                            fig_risk = go.Figure(data=[
+                                go.Bar(
+                                    x=risk_dist.index,
+                                    y=risk_dist.values,
+                                    marker_color=[risk_colors.get(risk, '#cccccc') for risk in risk_dist.index],
+                                    text=[f"{count/len(area_data)*100:.1f}%" for count in risk_dist.values],
+                                    textposition='auto'
+                                )
+                            ])
+                            
+                            fig_risk.update_layout(
+                                title=f"Crime Risk Levels in {selected_area}",
+                                xaxis_title="Risk Level",
+                                yaxis_title="Number of Incidents",
+                                showlegend=False,
+                                height=400
+                            )
+                            
+                            st.plotly_chart(fig_risk, use_container_width=True)
+                    
+                    with col6:
+                        st.markdown("#### 📊 Risk Level Statistics")
+                        if 'Risk Level' in area_data.columns:
+                            risk_counts = area_data['Risk Level'].value_counts()
+                            total_crimes = len(area_data)
+                            
+                            high_risk_pct = (risk_counts.get('High Risk', 0) / total_crimes * 100) if total_crimes > 0 else 0
+                            medium_risk_pct = (risk_counts.get('Medium Risk', 0) / total_crimes * 100) if total_crimes > 0 else 0
+                            low_risk_pct = (risk_counts.get('Low Risk', 0) / total_crimes * 100) if total_crimes > 0 else 0
+                            
+                            st.markdown(f"""
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #9c27b0;">
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="color: #6a1b9a;">🔴 High Risk:</strong> {risk_counts.get('High Risk', 0):,} ({high_risk_pct:.1f}%)
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="color: #8e24aa;">🟡 Medium Risk:</strong> {risk_counts.get('Medium Risk', 0):,} ({medium_risk_pct:.1f}%)
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="color: #ab47bc;">🟢 Low Risk:</strong> {risk_counts.get('Low Risk', 0):,} ({low_risk_pct:.1f}%)
+                                </div>
+                                <div style="font-size: 11px; color: #6c757d; margin-top: 10px;">
+                                    Based on {total_crimes:,} total incidents
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # FIXED: PIE CHART FOR TOP 5 CRIMES with teal colors
+                    if 'Crm Cd Desc' in area_data.columns:
+                        st.markdown("#### 🚨 Top 5 Crime Types Distribution")
+                        crime_types = area_data['Crm Cd Desc'].value_counts().head(5)
+                        
+                        # Calculate percentages
+                        total_crimes = len(area_data)
+                        crime_percentages = (crime_types / total_crimes * 100).round(1)
+                        
+                        # Create a pie chart for top 5 crimes
+                        crime_data_for_plot = pd.DataFrame({
+                            'Crime Type': crime_percentages.index,
+                            'Percentage': crime_percentages.values,
+                            'Count': crime_types.values
+                        })
+                        
+                        # Teal color scheme for pie chart (complementary to purple)
+                        teal_colors = ['#009688', '#00897b', '#00796b', '#00695c', '#004d40']
+                        
+                        # Create the pie chart
+                        fig = go.Figure(data=[
+                            go.Pie(
+                                labels=crime_data_for_plot['Crime Type'],
+                                values=crime_data_for_plot['Percentage'],
+                                marker_colors=teal_colors[:len(crime_data_for_plot)],
+                                textinfo='label+percent',
+                                textposition='auto',
+                                hovertemplate='<b>%{label}</b><br>' +
+                                            'Percentage: %{percent}<br>' +
+                                            'Count: %{customdata}<br>' +
+                                            '<extra></extra>',
+                                customdata=crime_data_for_plot['Count']
+                            )
+                        ])
+                        
+                        # Update layout for better readability with smaller legend font
+                        fig.update_layout(
+                            title=f"Top 5 Crime Types in {selected_area}",
+                            font=dict(size=12),
+                            height=500,
+                            showlegend=True,
+                            legend=dict(
+                                orientation="v",
+                                yanchor="middle",
+                                y=0.5,
+                                xanchor="left",
+                                x=1.05,
+                                font=dict(size=9)  # Smaller font for legend
+                            )
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Area-specific safety recommendations
+                    st.markdown("#### 🛡️ Area-Specific Safety Tips")
+                    if 'Time of Day' in area_data.columns:
+                        peak_time = area_data['Time of Day'].mode()[0] if not area_data['Time of Day'].mode().empty else "Any Time"
+                        if peak_time == "Night":
+                            st.warning(f"🌙 **Peak crime time in {selected_area}**: Night hours. Avoid traveling through this area at night when possible.")
+                        elif peak_time == "Evening":
+                            st.info(f"🌆 **Peak crime time in {selected_area}**: Evening hours. Use extra caution during evening.")
+                        else:
+                            st.success(f"☀️ **Peak crime time in {selected_area}**: {peak_time}. Generally safer conditions.")
+                    
+                    # FIXED: Crime-Specific Precautions in ONE HIGHLIGHTED BOX
+                    if 'Crm Cd Desc' in area_data.columns:
+                        top_crimes = area_data['Crm Cd Desc'].value_counts().head(3)
+                        st.markdown("##### 🎯 Crime-Specific Precautions")
+                        
+                        # Create bullet points for crime-specific precautions
+                        precautions_list = []
+                        for i, (crime, count) in enumerate(top_crimes.items()):
+                            crime_lower = str(crime).lower()
+                            
+                            if any(word in crime_lower for word in ['theft', 'burglary', 'robbery']):
+                                precautions_list.append(f"🔒 **{crime}** ({count} incidents): Secure valuables, avoid displaying expensive items")
+                            elif any(word in crime_lower for word in ['assault', 'battery']):
+                                precautions_list.append(f"⚠️ **{crime}** ({count} incidents): Stay in well-lit areas, avoid isolated locations")
+                            elif any(word in crime_lower for word in ['vehicle', 'auto']):
+                                precautions_list.append(f"🚗 **{crime}** ({count} incidents): Park in secure areas, lock vehicles, remove valuables")
+                            else:
+                                precautions_list.append(f"📊 **{crime}** ({count} incidents): Stay alert and follow general safety precautions")
+                        
+                        # Display all precautions in one highlighted box with bullet points
+                        precautions_html = "<br>".join([f"• {precaution}" for precaution in precautions_list])
+                        
+                        st.markdown(f"""
+                        <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 10px 0;">
+                            <div style="color: #856404; font-size: 14px; line-height: 1.6;">
+                                {precautions_html}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+            
+            else:
+                st.info(f"No crime data available for {selected_area}")
+    
+    ENHANCED_AVAILABLE = True
+    
+except ImportError:
+    # Fallback to existing system  
+    try:
+        from free_api_utils import compute_and_display_safe_route as enhanced_route
+        
+        def run_safe_route_mapping():
+            """Fallback Safe Route Mapping"""
+            st.markdown("### 🗺️ Safe Route Mapping")
+            st.markdown("Plan your routes with crime analysis and visualization.")
+            
+            # Load area data
+            @st.cache_data
+            def load_area_data():
+                import pandas as pd
+                try:
+                    df = pd.read_parquet("data/crime_data.parquet")
+                    return sorted(df['AREA NAME'].dropna().unique())
+                except Exception as e:
+                    st.error(f"Error loading area data: {e}")
+                    return []
+            
+            unique_areas = load_area_data()
+            
+            if not unique_areas:
+                st.error("❌ No area data available. Please ensure data/crime_data.parquet exists.")
+                return
+            
+            # Basic route planning form
+            with st.form("basic_safe_route_mapping_form"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    start_area = st.selectbox("🏁 Start Area", unique_areas)
+                    travel_mode = st.selectbox("🚗 Travel Mode", 
+                        ["driving", "walking", "cycling"],
+                        format_func=lambda x: {"driving": "🚗 Driving", "walking": "🚶 Walking", "cycling": "🚴 Cycling"}[x])
+                
+                with col2:
+                    end_area = st.selectbox("🎯 Destination Area", unique_areas)
+                    safety_priority = st.selectbox("🛡️ Safety Priority", 
+                        ["balanced", "maximum_safety", "speed_priority"],
+                        format_func=lambda x: {"balanced": "⚖️ Balanced", "maximum_safety": "🛡️ Maximum Safety", "speed_priority": "⚡ Speed Priority"}[x])
+                
+                generate_route = st.form_submit_button("🚀 Generate Safe Routes", type="primary")
+            
+            if generate_route:
+                if start_area == end_area:
+                    st.warning("⚠️ Please select different start and destination areas.")
+                else:
+                    with st.spinner("🔍 Analyzing crime patterns and generating routes..."):
+                        force_safe = (safety_priority == "maximum_safety")
+                        success = enhanced_route(start_area, end_area, travel_mode, force_safe)
+                        
+                        if not success:
+                            st.error("❌ Unable to generate routes. Please try different areas.")
+        
+        # Keep existing area analysis
+        def run_area_analysis():
+            """Keep your existing area analysis code here"""
+            st.markdown("### 📊 Crime Analysis by Area")
+            st.info("Area analysis feature - implementation needed")
+        
+        ENHANCED_AVAILABLE = False
+        
+    except ImportError:
+        def run_safe_route_mapping():
+            st.error("Safe route mapping not available")
+        
+        def run_area_analysis():
+            st.error("Area analysis not available")
+        
+        ENHANCED_AVAILABLE = False
+
+# ✅ NEW INTRODUCTION PAGE FUNCTION
+def show_introduction_page():
+    """Show the introduction/welcome page"""
+    
+    # Hero section
+    st.markdown("""
+    <div class="intro-hero">
+        <div class="big-title">🛡️ Welcome to the Crime Safety Travel Assistant</div>
+        <div class="medium-title">A Smart Travel Planner for Safer Journeys</div>
+        <p style="font-size: 1.2rem; margin-top: 1rem; opacity: 0.9;">
+            Keep yourself and your loved ones safe from crime risks with AI-powered route planning 
+            and real-time safety intelligence.
+        </p>
+        <p style="font-size: 0.9rem; margin-top: 1rem; opacity: 0.8; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px;">
+            🌐 <strong>This is a free public service</strong> - Anyone can use this tool to plan safer routes in Los Angeles
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Safety images section
+    st.markdown("""
+    <div class="safety-images">
+        <div class="safety-image-container">
+            <div class="safety-pins-bg">
+                <div class="safety-pin pin1"></div>
+                <div class="safety-pin pin2"></div>
+                <div class="safety-pin pin3"></div>
+                <div class="safety-pin pin4"></div>
+                <div class="safety-pin pin5"></div>
             </div>
+            <div class="location-pin">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#000000"/>
+                    <circle cx="12" cy="9" r="2.5" fill="#FFFFFF"/>
+                </svg>
+            </div>
+        </div>
+        <div class="safety-text">
+            <div class="safety-byline">Pin your<br>safety</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Core features section
+    st.markdown('<div class="feature-grid">', unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="feature-card">
+            <h3 style="color: #667eea; margin-bottom: 1rem;">🗺️ Enhanced Smart Routing</h3>
+            <ul style="line-height: 1.8; color: #444;">
+                <li><strong>Crime-aware route planning</strong> that adapts to real crime patterns</li>
+                <li><strong>Safety priority filtering</strong> with maximum safety, balanced, and speed options</li>
+                <li><strong>Time-based analysis</strong> considering crime patterns throughout the day</li>
+                <li><strong>Intelligent route recommendations</strong> with dynamic safety messaging</li>
+                <li><strong>Multi-modal support</strong> for driving, walking, and cycling</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="feature-card">
+            <h3 style="color: #667eea; margin-bottom: 1rem;">🎯 Advanced Mapping & Analysis</h3>
+            <ul style="line-height: 1.8; color: #444;">
+                <li><strong>Interactive crime visualization</strong> with Google Maps-like interface</li>
+                <li><strong>Alternative route generation</strong> based on crime risk levels</li>
+                <li><strong>Gender and time-specific routing</strong> for personalized safety</li>
+                <li><strong>Street-level safety analysis</strong> showing which areas to avoid</li>
+                <li><strong>Real-time risk assessment</strong> for different times of day</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="feature-card">
+            <h3 style="color: #667eea; margin-bottom: 1rem;">🚨 Crime Alerts & Intelligence</h3>
+            <ul style="line-height: 1.8; color: #444;">
+                <li><strong>Real-time crime notifications</strong> for your travel areas</li>
+                <li><strong>Official LAPD station locator</strong> with contact information</li>
+                <li><strong>Interactive alert mapping</strong> showing recent incidents</li>
+                <li><strong>Customizable alert settings</strong> for personalized monitoring</li>
+                <li><strong>Official data integration</strong> from LA City GeoHub</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # How it works section
+    st.markdown("---")
+    st.markdown('<div class="medium-title" style="text-align: center; margin: 2rem 0;">🧠 How It Works</div>', unsafe_allow_html=True)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("""
+        <div style="text-align: center; padding: 1rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">📊</div>
+            <h4 style="color: #667eea;">Analyze Crime Data</h4>
+            <p style="color: #666;">AI processes historical crime patterns and real-time incidents</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div style="text-align: center; padding: 1rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🗺️</div>
+            <h4 style="color: #667eea;">Generate Routes</h4>
+            <p style="color: #666;">Create multiple route options with different safety levels</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div style="text-align: center; padding: 1rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🎯</div>
+            <h4 style="color: #667eea;">Risk Assessment</h4>
+            <p style="color: #666;">Color-code routes based on actual crime zone proximity</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown("""
+        <div style="text-align: center; padding: 1rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🛡️</div>
+            <h4 style="color: #667eea;">Stay Safe</h4>
+            <p style="color: #666;">Get personalized safety recommendations and alerts</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Getting started section
+    st.markdown("---")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("""
+        <div style="text-align: center; padding: 2rem; background: white; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">
+            <h3 style="color: #667eea; margin-bottom: 1rem;">🚀 Ready to Start?</h3>
+            <p style="color: #666; margin-bottom: 1.5rem;">
+                Begin by exploring crime hotspots in your area, then plan safer routes for your journeys.
+            </p>
         </div>
         """, unsafe_allow_html=True)
         
-    except Exception as e:
-        st.error(f"Error creating safety message: {e}")
+        if st.button("🧭 Explore Crime Hotspots", type="primary", use_container_width=True):
+            st.session_state.current_page = "Crime Hotspot Clustering"
+            st.rerun()
+    
+    # Data source and disclaimer
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; padding: 1rem; color: #666; font-size: 0.9rem;">
+        <p><strong>Data Sources:</strong> Official LAPD crime data from LA City GeoHub • Police station locations from geohub.lacity.org</p>
+        <p><strong>Disclaimer:</strong> This tool provides guidance based on historical data. Always use your judgment and follow local safety guidelines.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-def forecast_crime(df, area_name=None, gender=None, top_n=10, months_ahead=6):
-    """Enhanced crime forecasting with intelligent messaging"""
-    
-    # Display forecast info
-    st.write("### 🔮 AI Crime Forecast")
-    
-    if df.empty:
-        st.warning("No data available for forecasting.")
-        return {}
-    
-    # Get dataset date range with safe formatting
-    try:
-        min_date = df['DATE OCC'].min()
-        max_date = df['DATE OCC'].max()
+# ✅ Initialize session state for page navigation
+if "page" not in st.session_state:
+    st.session_state.page = "clustering"
+
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "Introduction"
+
+# Initialize route planning session state
+if "route_start" not in st.session_state:
+    st.session_state.route_start = None
+if "route_end" not in st.session_state:
+    st.session_state.route_end = None
+
+# ✅ Main UI Header (only show if not on introduction page)
+if st.session_state.current_page != "Introduction":
+    st.markdown("""
+    <div class="main-header">
+        <div class="big-title">🛡️ Crime Safety Travel Assistant</div>
+        <p style="font-size: 1.1rem; margin: 0; opacity: 0.9;">
+            AI-powered route planning with enhanced crime analysis and safety intelligence
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ✅ Add crime alert integration with official LAPD data
+if ALERTS_AVAILABLE:
+    add_crime_alert_integration()
+
+# ✅ Handle page routing from clustering page
+def handle_page_routing():
+    """Handle navigation between pages"""
+    if st.session_state.page == "safe_route":
+        st.sidebar.success("🎯 Navigated from Crime Hotspot Analysis")
         
-        # Safely format dates
-        min_date_str = safe_strftime(min_date)
-        max_date_str = safe_strftime(max_date)
-        
-        # Calculate next day safely
-        if pd.notna(max_date):
-            next_day = max_date + pd.Timedelta(days=1)
-            next_day_str = safe_strftime(next_day)
-        else:
-            next_day_str = "Unknown"
-        
-        st.info(f"""
-        **Dataset Period:** {min_date_str} to {max_date_str}  
-        **Forecast starts from:** {next_day_str}
-        """)
-    except Exception as e:
-        st.warning(f"Could not determine dataset date range: {str(e)}")
-        st.info("**Forecast Period:** Unable to determine dates from dataset")
-
-    # Filter by area
-    filtered_df = df.copy()
-    if area_name:
-        filtered_df = filtered_df[filtered_df['AREA NAME'] == area_name]
-        st.write(f"**Area:** {area_name}")
-
-    # Filter by gender
-    if gender:
-        filtered_df = filtered_df[filtered_df['Vict Sex'] == gender]
-        gender_display = {"M": "Male", "F": "Female", "X": "Other"}.get(gender, gender)
-        st.write(f"**Gender:** {gender_display}")
-
-    if filtered_df.empty:
-        st.warning("No data available for selected filters.")
-        return {}
-
-    # Determine frequency based on forecast period
-    frequency_map = {1: 'W', 3: 'M', 6: 'M'}  # Week, Month, Quarter
-    frequency = frequency_map.get(months_ahead, 'M')
-    
-    # Adjust periods based on frequency
-    if frequency == 'W':
-        periods = months_ahead * 4  # Approximate weeks in months
-        forecast_period = "Week"
-    elif months_ahead == 3:
-        periods = months_ahead
-        forecast_period = "Month"
-    else:
-        periods = months_ahead
-        forecast_period = "Quarter"
-
-    # Get top crimes
-    try:
-        top_crimes = filtered_df['Crm Cd Desc'].value_counts().head(top_n).index.tolist()
-    except Exception as e:
-        st.error(f"Error getting top crimes: {str(e)}")
-        return {}
-
-    forecasts = {}
-    forecast_figures = {}
-
-    if not top_crimes:
-        st.warning("No crime types found in the data.")
-        return {}
-
-    progress_bar = st.progress(0)
-    
-    for i, crime in enumerate(top_crimes):
         try:
-            # Prepare time series
-            ts = prepare_time_series(filtered_df, crime, frequency)
-            
-            if ts.empty or len(ts) < 10:  # Need minimum data points
-                st.warning(f"Insufficient data for {crime} (only {len(ts)} data points)")
-                continue
-            
-            # Fit SARIMAX model
-            with st.spinner(f"Forecasting {crime}..."):
-                try:
-                    # Try seasonal model first
-                    if frequency == 'M' and len(ts) >= 24:  # Need at least 2 years for seasonal
-                        model = SARIMAX(ts, order=(1,1,1), seasonal_order=(1,1,1,12))
-                    elif frequency == 'W' and len(ts) >= 52:  # Need at least 1 year for seasonal
-                        model = SARIMAX(ts, order=(1,1,1), seasonal_order=(1,1,1,52))
-                    else:
-                        # Non-seasonal model
-                        model = SARIMAX(ts, order=(1,1,1))
-                    
-                    results = model.fit(disp=False, maxiter=100)
-                    
-                except Exception as model_error:
-                    # Fallback to simple ARIMA
-                    st.warning(f"Using simplified model for {crime}: {str(model_error)}")
-                    model = SARIMAX(ts, order=(1,1,0))
-                    results = model.fit(disp=False, maxiter=50)
-                
-                # Generate forecast
-                forecast_raw = results.forecast(steps=periods)
-                
-                # Clean forecast values to handle NaN/infinity
-                forecast_values = clean_forecast_values(forecast_raw)
-                
-                try:
-                    conf_int_raw = results.get_forecast(steps=periods).conf_int()
-                    # Clean confidence intervals
-                    conf_int = pd.DataFrame({
-                        'lower': clean_forecast_values(conf_int_raw.iloc[:, 0] if hasattr(conf_int_raw, 'iloc') else conf_int_raw['lower']),
-                        'upper': clean_forecast_values(conf_int_raw.iloc[:, 1] if hasattr(conf_int_raw, 'iloc') else conf_int_raw['upper'])
-                    })
-                except:
-                    # Create dummy confidence intervals if they fail
-                    conf_int = pd.DataFrame({
-                        'lower': forecast_values * 0.8,
-                        'upper': forecast_values * 1.2
-                    })
-                
-                # Create forecast dates starting from next period after last data date
-                last_data_date = ts.index.max()
-                forecast_dates = get_forecast_dates(last_data_date, periods, frequency)
-                
-                # Store results
-                forecast_series = pd.Series(forecast_values, index=forecast_dates)
-                forecasts[crime] = forecast_series
-                
-                # Create interactive plot
-                fig = go.Figure()
-                
-                # Historical data (last 12 periods for context)
-                historical_data = ts.tail(min(12, len(ts)))
-                fig.add_trace(go.Scatter(
-                    x=historical_data.index,
-                    y=historical_data.values,
-                    mode='lines+markers',
-                    name='Historical Data',
-                    line=dict(color='blue', width=2),
-                    marker=dict(size=6)
-                ))
-                
-                # Forecast
-                fig.add_trace(go.Scatter(
-                    x=forecast_dates,
-                    y=forecast_values,
-                    mode='lines+markers',
-                    name='Forecast',
-                    line=dict(color='red', width=2, dash='dash'),
-                    marker=dict(size=6)
-                ))
-                
-                # Confidence interval
-                try:
-                    fig.add_trace(go.Scatter(
-                        x=forecast_dates,
-                        y=conf_int['upper'],
-                        mode='lines',
-                        name='Upper Confidence',
-                        line=dict(color='rgba(255,0,0,0.2)', width=0),
-                        showlegend=False
-                    ))
-                    
-                    fig.add_trace(go.Scatter(
-                        x=forecast_dates,
-                        y=conf_int['lower'],
-                        mode='lines',
-                        name='Confidence Interval',
-                        line=dict(color='rgba(255,0,0,0.2)', width=0),
-                        fill='tonexty',
-                        fillcolor='rgba(255,0,0,0.2)'
-                    ))
-                except:
-                    pass  # Skip confidence intervals if they fail
-                
-                # Update layout
-                fig.update_layout(
-                    title=f'{crime} - Forecast',
-                    xaxis_title='Date',
-                    yaxis_title='Number of Incidents',
-                    hovermode='x unified',
-                    template='plotly_white',
-                    height=400
-                )
-                
-                forecast_figures[crime] = fig
-                
+            run_safe_route_mapping()
         except Exception as e:
-            st.warning(f"Could not forecast for {crime}: {str(e)}")
-            continue
+            st.error(f"Error loading safe route interface: {str(e)}")
         
-        # Update progress
-        progress_bar.progress((i + 1) / len(top_crimes))
-    
-    progress_bar.empty()
-    
-    # Display results
-    if forecast_figures:
-        st.success(f"✅ Successfully generated forecasts for {len(forecast_figures)} crime types")
-        
-        # Summary statistics with improved NaN handling
-        with st.expander("📊 Forecast Summary"):
-            summary_data = []
-            for crime, forecast in forecasts.items():
-                try:
-                    # Clean forecast series to handle NaN values
-                    clean_forecast = forecast.fillna(0)  # Replace NaN with 0
-                    
-                    # Use safe conversion functions
-                    total_forecast = safe_int_conversion(clean_forecast.sum())
-                    avg_period = safe_numeric_conversion(clean_forecast.mean())
-                    
-                    # Find peak period safely
-                    if not clean_forecast.empty and clean_forecast.max() > 0:
-                        max_period = clean_forecast.idxmax()
-                        max_value = safe_int_conversion(clean_forecast.max())
-                        peak_period_str = safe_strftime(max_period, '%Y-%m-%d')
-                    else:
-                        peak_period_str = "No peak"
-                        max_value = 0
-                    
-                    summary_data.append({
-                        'Crime Type': crime,
-                        'Total Predicted': total_forecast,
-                        'Average per Period': f"{avg_period:.1f}",
-                        'Peak Period': peak_period_str,
-                        'Peak Value': max_value
-                    })
-                    
-                except Exception as e:
-                    st.warning(f"Could not generate summary for {crime}: {str(e)}")
-                    # Add a fallback entry
-                    summary_data.append({
-                        'Crime Type': crime,
-                        'Total Predicted': 0,
-                        'Average per Period': "0.0",
-                        'Peak Period': "Unknown",
-                        'Peak Value': 0
-                    })
-            
-            if summary_data:
-                summary_df = pd.DataFrame(summary_data)
-                st.dataframe(summary_df, use_container_width=True)
-            else:
-                st.info("No summary data could be generated.")
-        
-        # Display forecast charts
-        for crime, fig in forecast_figures.items():
-            st.plotly_chart(fig, use_container_width=True)
-        
-        # NEW: Generate and display simplified forecast message
-        message_data = generate_intelligent_forecast_message(
-            forecasts, df, area_name, gender, forecast_period
-        )
-        
-        if message_data and area_name:
-            display_intelligent_forecast_message(message_data, df, area_name, gender, months_ahead)
-    
-    return forecast_figures
+        if st.sidebar.button("⬅️ Back to Crime Hotspots"):
+            st.session_state.page = "clustering"
+            st.rerun()
+        return True
+    return False
 
-def run_forecast():
-    """Main forecast interface"""
+# ✅ Check if we're in a routed page
+if handle_page_routing():
+    pass
+else:
+    # ✅ Navigation with Introduction page
+    menu_options = [
+        "🏠 Introduction",
+        "🧭 Crime Hotspot Clustering",
+        "🗺️ Safe Route Mapping", 
+        "📊 Crime Forecasting"
+    ]
+    
+    # Add crime alerts option if available
+    if ALERTS_AVAILABLE:
+        menu_options.append("🚨 Crime Alerts")
+    
+    # Use current_page from session state for navigation
+    if st.session_state.current_page not in [opt.split(" ", 1)[1] for opt in menu_options]:
+        st.session_state.current_page = "Introduction"
+    
+    # Create menu with current selection
+    menu_index = 0
+    for i, opt in enumerate(menu_options):
+        if opt.split(" ", 1)[1] == st.session_state.current_page:
+            menu_index = i
+            break
+    
+    menu = st.sidebar.radio(
+        "🧭 Navigation",
+        menu_options,
+        index=menu_index,
+        help="Select the feature you want to use"
+    )
+    
+    # Update current page when menu changes
+    selected_page = menu.split(" ", 1)[1]
+    if selected_page != st.session_state.current_page:
+        st.session_state.current_page = selected_page
+        st.rerun()
+
+    # ✅ Reset page state when using normal navigation
+    if st.session_state.current_page == "Crime Hotspot Clustering":
+        st.session_state.page = "clustering"
+
+    # ✅ Menu logic
     try:
-        df = load_data()
-        
-        if df.empty:
-            st.error("Could not load crime data. Please check your data file.")
-            return
-
-        st.sidebar.header("🔍 Forecast Filters")
-        
-        # Area selection
-        area_options = ["All"] + sorted(df['AREA NAME'].dropna().unique())
-        selected_area = st.sidebar.selectbox("Area Name", area_options)
-        selected_area = None if selected_area == "All" else selected_area
-
-        # Gender selection
-        gender_options = ["All", "Male", "Female", "Other"]
-        gender_input = st.sidebar.selectbox("Gender", gender_options)
-        gender_map = {"Male": "M", "Female": "F", "Other": "X"}
-        selected_gender = None if gender_input == "All" else gender_map.get(gender_input)
-
-        # Forecast period
-        forecast_period = st.sidebar.selectbox(
-            "Forecast Period", 
-            ["Week", "Month", "Quarter"],
-            help="Week=4 weeks, Month=3 months, Quarter=6 months"
-        )
-        months_lookup = {"Week": 1, "Month": 3, "Quarter": 6}
-        months_ahead = months_lookup[forecast_period]
-
-        # Number of top crimes to forecast
-        top_n = st.sidebar.slider("Number of Crime Types", min_value=3, max_value=15, value=10)
-
-        # Forecast button
-        if st.sidebar.button("🔮 Generate Forecast", type="primary"):
-            with st.spinner("Analyzing crime patterns and generating forecasts..."):
-                forecast_figures = forecast_crime(
-                    df, 
-                    selected_area, 
-                    selected_gender, 
-                    top_n=top_n, 
-                    months_ahead=months_ahead
-                )
-
-                if not forecast_figures:
-                    st.warning("⚠️ No forecasts could be generated for the selected filters. Try different parameters.")
-        
-        # Information section
-        with st.expander("ℹ️ About Crime Forecasting"):
-            st.markdown("""
-            **Note:** Forecasts are statistical predictions based on historical patterns and should be used as guidance alongside other crime prevention strategies.
-            """)
+        if st.session_state.current_page == "Introduction":
+            show_introduction_page()
             
+        elif st.session_state.current_page == "Crime Hotspot Clustering":
+            # Updated font sizes as requested
+            st.markdown('<h1 style="font-size: 2.2rem; font-weight: 700; color: #333; margin-bottom: 0.5rem;">🧭 Crime Hotspot Analysis</h1>', unsafe_allow_html=True)
+            st.markdown('<p style="font-size: 1rem; color: #666; margin-bottom: 1.5rem;">Check areas with Crime Hotspots</p>', unsafe_allow_html=True)
+            run_clustering_ui()
+
+        elif st.session_state.current_page == "Safe Route Mapping":
+            # Enhanced tabs for route mapping and area analysis
+            if ENHANCED_AVAILABLE:
+                tab1, tab2 = st.tabs(["🗺️ Smart Route Planning", "📊 Enhanced Area Analysis"])
+            else:
+                tab1, tab2 = st.tabs(["🗺️ Route Planning", "📊 Area Analysis"])
+            
+            with tab1:
+                # Pre-populate route form if coming from area analysis
+                if st.session_state.route_start or st.session_state.route_end:
+                    if st.session_state.route_start and st.session_state.route_end:
+                        st.success(f"🎯 Route: {st.session_state.route_start} → {st.session_state.route_end}")
+                    elif st.session_state.route_start:
+                        st.info(f"📍 Starting from: {st.session_state.route_start}")
+                    elif st.session_state.route_end:
+                        st.info(f"🎯 Going to: {st.session_state.route_end}")
+                    
+                    if st.button("🔄 Clear Route Selection"):
+                        st.session_state.route_start = None
+                        st.session_state.route_end = None
+                        st.rerun()
+                
+                run_safe_route_mapping()
+            
+            with tab2:
+                run_area_analysis()
+
+        elif st.session_state.current_page == "Crime Forecasting":
+            st.markdown("### 📊 Crime Forecasting")
+            st.markdown("Predict future crime trends using advanced AI forecasting models.")
+            run_forecast()
+        
+        elif st.session_state.current_page == "Crime Alerts" and ALERTS_AVAILABLE:
+            run_crime_alerts_page()
+
     except Exception as e:
-        st.error(f"An error occurred in forecasting: {str(e)}")
-        with st.expander("🔧 Debug Information"):
-            import traceback
-            st.code(traceback.format_exc())
+        st.error(f"An error occurred: {str(e)}")
+        
+        with st.expander("🔧 Troubleshooting"):
+            st.markdown("""
+            **Common Solutions:**
+            
+            1. **Refresh the page** - Fixes most temporary issues
+            2. **Check data files** - Ensure all required data files are in data/ folder
+            3. **Try different areas** - Some may have limited data
+            4. **Check dependencies** - Ensure required packages are installed
+            5. **LAPD Data** - Ensure LAPD_Police_Stations CSV is in data/ folder
+            6. **Enhanced Features** - Install enhanced modules for full functionality
+            """)
+
+# ✅ Simplified Sidebar (removed the system features section as requested)
+st.sidebar.markdown("---")
+
+# Public Service Notice
+st.sidebar.markdown("""
+### 🌐 Public Access
+This tool is **free and open to everyone**.
+Help us improve by reporting any issues.
+""")
+
+st.sidebar.markdown("---")
+
+# Enhanced emergency section
+st.sidebar.markdown("### 🚨 Emergency Contacts")
+st.sidebar.error("""
+**🆘 IMMEDIATE DANGER**
+- **Police Emergency**: 911
+- **Fire/Medical**: 911
+""")
+
+st.sidebar.warning("""
+**📞 NON-EMERGENCY**
+- **Police Reports**: 311
+- **Traffic Issues**: 311
+""")
+
+# ✅ Current page indicator
+with st.sidebar:
+    st.info(f"📍 Currently: {st.session_state.current_page}")
+
+# ✅ Enhanced Footer
+st.markdown("---")
+st.markdown(
+    """
+    <div style='text-align: center; color: #888; padding: 1rem; background: white; border-radius: 10px; margin-top: 2rem;'>
+        <div style='font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;'>
+            🛡️ Crime Safety Travel Assistant
+        </div>
+        <div style='font-size: 0.9rem;'>
+            AI-Powered Route Planning with Enhanced Crime Analysis<br>
+            <small>Official LAPD Data from LA City GeoHub</small><br>
+            <small style='color: #667eea; font-weight: 600;'>🌐 Free Public Service - Open to Everyone</small>
+        </div>
+        <div style='font-size: 0.8rem; margin-top: 0.5rem; color: #999;'>
+            <strong>Disclaimer:</strong> This tool uses historical crime data for educational and safety planning purposes only.<br>
+            Always use your judgment and follow official safety guidelines.
+        </div>
+    </div>
+    """, 
+    unsafe_allow_html=True
+)
