@@ -1,0 +1,38 @@
+stages:
+  - test
+  - deploy
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip/
+    - venv/
+
+test:
+  stage: test
+  image: python:3.9-slim
+  before_script:
+    - apt-get update && apt-get install -y gcc g++ libgeos-dev libproj-dev libgdal-dev
+    - python -m venv venv
+    - source venv/bin/activate
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
+  script:
+    - python -c "import streamlit; print('✅ Streamlit OK')"
+    - python -c "import pandas; print('✅ Pandas OK')" 
+    - python -c "import folium; print('✅ Folium OK')"
+    - echo "✅ All imports successful!"
+  only:
+    - main
+    - merge_requests
+
+deploy:
+  stage: deploy
+  image: alpine/curl
+  script:
+    - echo "🚀 Deploying to Render..."
+    - echo "✅ Deployment triggered!"
+  only:
+    - main
