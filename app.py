@@ -283,15 +283,8 @@ try:
         st.markdown("### 🗺️ Smart Crime-Aware Route Planning")
         st.markdown("**AI-powered routing that adapts to real crime patterns and time-of-day risk levels.**")
         
-        # UPDATED: Route Safety Guide with new percentages
-        st.markdown("### 📊 Route Safety Guide")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.success("🟢 **Safe Route** - Minimal crime zone exposure (<20%)")
-        with col2:
-            st.warning("🟡 **Moderate Route** - Some crime zone exposure (20-40%)")  
-        with col3:
-            st.error("🔴 **High Risk Route** - Significant crime exposure (>40%)")
+        # REMOVED: Route Safety Guide from here (it was above the filters)
+        # Now it will only appear below the map after route generation
         
         # Load area data
         @st.cache_data
@@ -437,6 +430,18 @@ try:
                     if success:
                         # Enhanced success feedback with contextual information
                         st.success("🎯 Smart routes generated with enhanced crime analysis!")
+                        
+                        # THE MAP WOULD BE DISPLAYED HERE BY THE enhanced_route FUNCTION
+                        
+                        # ROUTE SAFETY GUIDE - Now appears BELOW the map with updated percentages
+                        st.markdown("### 📊 Route Safety Guide")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.success("🟢 **Safe Routes** - Minimal crime zone exposure (<20%)")
+                        with col2:
+                            st.warning("🟡 **Moderate Routes** - Some crime zone exposure (20-40%)")
+                        with col3:
+                            st.error("🔴 **High Risk Routes** - Significant crime exposure (>40%)")
                         
                         # Provide contextual feedback based on settings
                         if safety_priority == "maximum_safety":
