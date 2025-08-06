@@ -30,5 +30,7 @@ Thumbs.db
 
 # Data files (if sensitive)
 data/*.csv
+crime_data.csv
+data/
 data/*.parquet
 models/*.pkl
