@@ -1458,4 +1458,3 @@ else:
         "📊 Crime Forecasting"
     ]
     
-    # Ad
