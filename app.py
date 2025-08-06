@@ -283,7 +283,15 @@ try:
         st.markdown("### 🗺️ Smart Crime-Aware Route Planning")
         st.markdown("**AI-powered routing that adapts to real crime patterns and time-of-day risk levels.**")
         
-
+        # UPDATED: Route Safety Guide with new percentages
+        st.markdown("### 📊 Route Safety Guide")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.success("🟢 **Safe Route** - Minimal crime zone exposure (<20%)")
+        with col2:
+            st.warning("🟡 **Moderate Route** - Some crime zone exposure (20-40%)")  
+        with col3:
+            st.error("🔴 **High Risk Route** - Significant crime exposure (>40%)")
         
         # Load area data
         @st.cache_data
