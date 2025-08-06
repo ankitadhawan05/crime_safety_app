@@ -283,9 +283,6 @@ try:
         st.markdown("### 🗺️ Smart Crime-Aware Route Planning")
         st.markdown("**AI-powered routing that adapts to real crime patterns and time-of-day risk levels.**")
         
-        # REMOVED: Route Safety Guide from here (it was above the filters)
-        # Now it will only appear below the map after route generation
-        
         # Load area data
         @st.cache_data
         def load_area_data():
@@ -345,7 +342,150 @@ try:
                     help="Display crime hotspots with accurate severity colors on the map")
             
             with col4:
-                # Advanced filtering options
+                # Add crime alerts option if available
+    if ALERTS_AVAILABLE:
+        menu_options.append("🚨 Crime Alerts")
+    
+    # Use current_page from session state for navigation
+    if st.session_state.current_page not in [opt.split(" ", 1)[1] for opt in menu_options]:
+        st.session_state.current_page = "Introduction"
+    
+    # Create menu with current selection
+    menu_index = 0
+    for i, opt in enumerate(menu_options):
+        if opt.split(" ", 1)[1] == st.session_state.current_page:
+            menu_index = i
+            break
+    
+    menu = st.sidebar.radio(
+        "🧭 Navigation",
+        menu_options,
+        index=menu_index,
+        help="Select the feature you want to use"
+    )
+    
+    # Update current page when menu changes
+    selected_page = menu.split(" ", 1)[1]
+    if selected_page != st.session_state.current_page:
+        st.session_state.current_page = selected_page
+        st.rerun()
+
+    # ✅ Reset page state when using normal navigation
+    if st.session_state.current_page == "Crime Hotspot Clustering":
+        st.session_state.page = "clustering"
+
+    # ✅ Menu logic
+    try:
+        if st.session_state.current_page == "Introduction":
+            show_introduction_page()
+            
+        elif st.session_state.current_page == "Crime Hotspot Clustering":
+            # Updated font sizes as requested
+            st.markdown('<h1 style="font-size: 2.2rem; font-weight: 700; color: #333; margin-bottom: 0.5rem;">🧭 Crime Hotspot Analysis</h1>', unsafe_allow_html=True)
+            st.markdown('<p style="font-size: 1rem; color: #666; margin-bottom: 1.5rem;">Check areas with Crime Hotspots</p>', unsafe_allow_html=True)
+            run_clustering_ui()
+
+        elif st.session_state.current_page == "Safe Route Mapping":
+            # Enhanced tabs for route mapping and area analysis
+            if ENHANCED_AVAILABLE:
+                tab1, tab2 = st.tabs(["🗺️ Smart Route Planning", "📊 Enhanced Area Analysis"])
+            else:
+                tab1, tab2 = st.tabs(["🗺️ Route Planning", "📊 Area Analysis"])
+            
+            with tab1:
+                # Pre-populate route form if coming from area analysis
+                if st.session_state.route_start or st.session_state.route_end:
+                    if st.session_state.route_start and st.session_state.route_end:
+                        st.success(f"🎯 Route: {st.session_state.route_start} → {st.session_state.route_end}")
+                    elif st.session_state.route_start:
+                        st.info(f"📍 Starting from: {st.session_state.route_start}")
+                    elif st.session_state.route_end:
+                        st.info(f"🎯 Going to: {st.session_state.route_end}")
+                    
+                    if st.button("🔄 Clear Route Selection"):
+                        st.session_state.route_start = None
+                        st.session_state.route_end = None
+                        st.rerun()
+                
+                run_safe_route_mapping()
+            
+            with tab2:
+                run_area_analysis()
+
+        elif st.session_state.current_page == "Crime Forecasting":
+            st.markdown("### 📊 Crime Forecasting")
+            st.markdown("Predict future crime trends using advanced AI forecasting models.")
+            run_forecast()
+        
+        elif st.session_state.current_page == "Crime Alerts" and ALERTS_AVAILABLE:
+            run_crime_alerts_page()
+
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+        
+        with st.expander("🔧 Troubleshooting"):
+            st.markdown("""
+            **Common Solutions:**
+            
+            1. **Refresh the page** - Fixes most temporary issues
+            2. **Check data files** - Ensure all required data files are in data/ folder
+            3. **Try different areas** - Some may have limited data
+            4. **Check dependencies** - Ensure required packages are installed
+            5. **LAPD Data** - Ensure LAPD_Police_Stations CSV is in data/ folder
+            6. **Enhanced Features** - Install enhanced modules for full functionality
+            """)
+
+# ✅ Simplified Sidebar (removed the system features section as requested)
+st.sidebar.markdown("---")
+
+# Public Service Notice
+st.sidebar.markdown("""
+### 🌐 Public Access
+This tool is **free and open to everyone**.
+Help us improve by reporting any issues.
+""")
+
+st.sidebar.markdown("---")
+
+# Enhanced emergency section
+st.sidebar.markdown("### 🚨 Emergency Contacts")
+st.sidebar.error("""
+**🆘 IMMEDIATE DANGER**
+- **Police Emergency**: 911
+- **Fire/Medical**: 911
+""")
+
+st.sidebar.warning("""
+**📞 NON-EMERGENCY**
+- **Police Reports**: 311
+- **Traffic Issues**: 311
+""")
+
+# ✅ Current page indicator
+with st.sidebar:
+    st.info(f"📍 Currently: {st.session_state.current_page}")
+
+# ✅ Enhanced Footer
+st.markdown("---")
+st.markdown(
+    """
+    <div style='text-align: center; color: #888; padding: 1rem; background: white; border-radius: 10px; margin-top: 2rem;'>
+        <div style='font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;'>
+            🛡️ Crime Safety Travel Assistant
+        </div>
+        <div style='font-size: 0.9rem;'>
+            AI-Powered Route Planning with Enhanced Crime Analysis<br>
+            <small>Official LAPD Data from LA City GeoHub</small><br>
+            <small style='color: #667eea; font-weight: 600;'>🌐 Free Public Service - Open to Everyone</small>
+        </div>
+        <div style='font-size: 0.8rem; margin-top: 0.5rem; color: #999;'>
+            <strong>Disclaimer:</strong> This tool uses historical crime data for educational and safety planning purposes only.<br>
+            Always use your judgment and follow official safety guidelines.
+        </div>
+    </div>
+    """, 
+    unsafe_allow_html=True
+)vanced filtering options
                 gender_profile = st.selectbox("👤 Traveler Profile", 
                     ["Any", "Male", "Female"], 
                     help="Crime patterns may vary by gender demographics")
@@ -1113,6 +1253,9 @@ def show_introduction_page():
             Keep yourself and your loved ones safe from crime risks with AI-powered route planning 
             and real-time safety intelligence.
         </p>
+        <p style="font-size: 0.9rem; margin-top: 1rem; opacity: 0.8; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px;">
+            🌐 <strong>This is a free public service</strong> - Anyone can use this tool to plan safer routes in Los Angeles
+        </p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1315,133 +1458,4 @@ else:
         "📊 Crime Forecasting"
     ]
     
-    # Add crime alerts option if available
-    if ALERTS_AVAILABLE:
-        menu_options.append("🚨 Crime Alerts")
-    
-    # Use current_page from session state for navigation
-    if st.session_state.current_page not in [opt.split(" ", 1)[1] for opt in menu_options]:
-        st.session_state.current_page = "Introduction"
-    
-    # Create menu with current selection
-    menu_index = 0
-    for i, opt in enumerate(menu_options):
-        if opt.split(" ", 1)[1] == st.session_state.current_page:
-            menu_index = i
-            break
-    
-    menu = st.sidebar.radio(
-        "🧭 Navigation",
-        menu_options,
-        index=menu_index,
-        help="Select the feature you want to use"
-    )
-    
-    # Update current page when menu changes
-    selected_page = menu.split(" ", 1)[1]
-    if selected_page != st.session_state.current_page:
-        st.session_state.current_page = selected_page
-        st.rerun()
-
-    # ✅ Reset page state when using normal navigation
-    if st.session_state.current_page == "Crime Hotspot Clustering":
-        st.session_state.page = "clustering"
-
-    # ✅ Menu logic
-    try:
-        if st.session_state.current_page == "Introduction":
-            show_introduction_page()
-            
-        elif st.session_state.current_page == "Crime Hotspot Clustering":
-            # Updated font sizes as requested
-            st.markdown('<h1 style="font-size: 2.2rem; font-weight: 700; color: #333; margin-bottom: 0.5rem;">🧭 Crime Hotspot Analysis</h1>', unsafe_allow_html=True)
-            st.markdown('<p style="font-size: 1rem; color: #666; margin-bottom: 1.5rem;">Check areas with Crime Hotspots</p>', unsafe_allow_html=True)
-            run_clustering_ui()
-
-        elif st.session_state.current_page == "Safe Route Mapping":
-            # Enhanced tabs for route mapping and area analysis
-            if ENHANCED_AVAILABLE:
-                tab1, tab2 = st.tabs(["🗺️ Smart Route Planning", "📊 Enhanced Area Analysis"])
-            else:
-                tab1, tab2 = st.tabs(["🗺️ Route Planning", "📊 Area Analysis"])
-            
-            with tab1:
-                # Pre-populate route form if coming from area analysis
-                if st.session_state.route_start or st.session_state.route_end:
-                    if st.session_state.route_start and st.session_state.route_end:
-                        st.success(f"🎯 Route: {st.session_state.route_start} → {st.session_state.route_end}")
-                    elif st.session_state.route_start:
-                        st.info(f"📍 Starting from: {st.session_state.route_start}")
-                    elif st.session_state.route_end:
-                        st.info(f"🎯 Going to: {st.session_state.route_end}")
-                    
-                    if st.button("🔄 Clear Route Selection"):
-                        st.session_state.route_start = None
-                        st.session_state.route_end = None
-                        st.rerun()
-                
-                run_safe_route_mapping()
-            
-            with tab2:
-                run_area_analysis()
-
-        elif st.session_state.current_page == "Crime Forecasting":
-            st.markdown("### 📊 Crime Forecasting")
-            st.markdown("Predict future crime trends using advanced AI forecasting models.")
-            run_forecast()
-        
-        elif st.session_state.current_page == "Crime Alerts" and ALERTS_AVAILABLE:
-            run_crime_alerts_page()
-
-    except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
-        
-        with st.expander("🔧 Troubleshooting"):
-            st.markdown("""
-            **Common Solutions:**
-            
-            1. **Refresh the page** - Fixes most temporary issues
-            2. **Check data files** - Ensure all required data files are in data/ folder
-            3. **Try different areas** - Some may have limited data
-            4. **Check dependencies** - Ensure required packages are installed
-            5. **LAPD Data** - Ensure LAPD_Police_Stations CSV is in data/ folder
-            6. **Enhanced Features** - Install enhanced modules for full functionality
-            """)
-
-# ✅ Simplified Sidebar (removed the system features section as requested)
-st.sidebar.markdown("---")
-
-# Enhanced emergency section
-st.sidebar.markdown("### 🚨 Emergency Contacts")
-st.sidebar.error("""
-**🆘 IMMEDIATE DANGER**
-- **Police Emergency**: 911
-- **Fire/Medical**: 911
-""")
-
-st.sidebar.warning("""
-**📞 NON-EMERGENCY**
-- **Police Reports**: 311
-- **Traffic Issues**: 311
-""")
-
-# ✅ Current page indicator
-with st.sidebar:
-    st.info(f"📍 Currently: {st.session_state.current_page}")
-
-# ✅ Enhanced Footer
-st.markdown("---")
-st.markdown(
-    """
-    <div style='text-align: center; color: #888; padding: 1rem; background: white; border-radius: 10px; margin-top: 2rem;'>
-        <div style='font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;'>
-            🛡️ Crime Safety Travel Assistant
-        </div>
-        <div style='font-size: 0.9rem;'>
-            AI-Powered Route Planning with Enhanced Crime Analysis<br>
-            <small>Official LAPD Data from LA City GeoHub</small>
-        </div>
-    </div>
-    """, 
-    unsafe_allow_html=True
-)
+    # Ad
