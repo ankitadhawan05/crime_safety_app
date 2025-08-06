@@ -510,7 +510,7 @@ try:
                             - Try different travel modes
                             """)
     
-    # FIXED Enhanced Area Analysis with better integration
+    # COMPLETE Enhanced Area Analysis function from second attachment
     def run_area_analysis():
         """Enhanced Area Analysis functionality with uniform purple color scheme"""
         st.markdown("### 📊 Crime Analysis by Area")
@@ -655,6 +655,8 @@ try:
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
+                    else:
+                        st.info("Victim data not available")
                 
                 with col3:
                     if 'Time of Day' in area_data.columns:
@@ -670,6 +672,8 @@ try:
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
+                    else:
+                        st.info("Time data not available")
                 
                 with col4:
                     if 'Crm Cd Desc' in area_data.columns:
@@ -691,8 +695,336 @@ try:
                     else:
                         st.info("Crime description data not available")
                 
-                # Rest of the detailed analysis code continues here...
-                # [Include all the detailed analysis code from the original file]
+                # Detailed analysis
+                if st.button("📈 Show Detailed Analysis", key="detailed_analysis"):
+                    st.markdown("---")
+                    st.subheader(f"Detailed Analysis for {selected_area}")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if 'Time of Day' in area_data.columns:
+                            st.markdown("#### 🕐 Crime Distribution by Time of Day")
+                            time_dist = area_data['Time of Day'].value_counts()
+                            
+                            # Calculate percentages
+                            time_percentages = (time_dist / time_dist.sum() * 100).round(1)
+                            
+                            # Purple color scheme for time distribution
+                            time_colors = ['#9c88ff', '#7c4dff', '#651fff', '#6200ea']
+                            fig_time = go.Figure(data=[
+                                go.Bar(
+                                    x=time_dist.index,
+                                    y=time_dist.values,
+                                    marker_color=time_colors[:len(time_dist)],
+                                    text=[f"{pct}%" for pct in time_percentages.values],
+                                    textposition='auto'
+                                )
+                            ])
+                            fig_time.update_layout(
+                                title="Crime Distribution by Time of Day",
+                                xaxis_title="Time of Day",
+                                yaxis_title="Number of Incidents",
+                                showlegend=False,
+                                height=400
+                            )
+                            st.plotly_chart(fig_time, use_container_width=True)
+                    
+                    with col2:
+                        if 'Vict Sex' in area_data.columns:
+                            st.markdown("#### 👥 Victim Distribution by Gender")
+                            # Clean and categorize victim sex data into exactly 3 categories
+                            victim_sex_cleaned = area_data['Vict Sex'].fillna('Others').str.upper().str.strip()
+                            
+                            # Map all variations to 3 categories only
+                            def categorize_victim_sex(sex):
+                                if sex in ['M', 'MALE']:
+                                    return 'Male'
+                                elif sex in ['F', 'FEMALE']:
+                                    return 'Female'
+                                else:  # X, H, -, NaN, Others, etc.
+                                    return 'Others'
+                            
+                            victim_sex_final = victim_sex_cleaned.apply(categorize_victim_sex)
+                            
+                            # Create clean distribution with exactly 3 categories
+                            gender_dist = victim_sex_final.value_counts()
+                            
+                            # Calculate percentages
+                            gender_percentages = (gender_dist / gender_dist.sum() * 100).round(1)
+                            
+                            # Purple color scheme for gender distribution
+                            gender_colors = ['#b388ff', '#9575cd', '#7e57c2']
+                            fig_gender = go.Figure(data=[
+                                go.Bar(
+                                    x=gender_dist.index,
+                                    y=gender_dist.values,
+                                    marker_color=gender_colors[:len(gender_dist)],
+                                    text=[f"{pct}%" for pct in gender_percentages.values],
+                                    textposition='auto'
+                                )
+                            ])
+                            fig_gender.update_layout(
+                                title="Victim Distribution by Gender",
+                                xaxis_title="Gender",
+                                yaxis_title="Number of Incidents",
+                                showlegend=False,
+                                height=400
+                            )
+                            st.plotly_chart(fig_gender, use_container_width=True)
+                    
+                    # Add victim distribution by age group
+                    col3, col4 = st.columns(2)
+                    
+                    with col3:
+                        if 'Vict Age' in area_data.columns:
+                            st.markdown("#### 👶👦👨👴 Victim Distribution by Age Group")
+                            
+                            # Clean age data and convert to numeric
+                            victim_ages = pd.to_numeric(area_data['Vict Age'], errors='coerce')
+                            
+                            # Define age group categorization function (only for valid ages)
+                            def categorize_age_group(age):
+                                if pd.isna(age) or age < 0 or age > 120:  # Filter out invalid ages
+                                    return None  # Will be filtered out
+                                elif age < 12:
+                                    return 'Children (0-11)'
+                                elif age < 18:
+                                    return 'Adolescents (12-17)'
+                                elif age < 40:
+                                    return 'Adults (18-39)'
+                                elif age < 60:
+                                    return 'Middle-aged (40-59)'
+                                else:
+                                    return 'Elderly (60+)'
+                            
+                            # Apply age group categorization and filter out invalid ages
+                            age_groups = victim_ages.apply(categorize_age_group)
+                            age_groups_valid = age_groups.dropna()  # Remove None values (invalid ages)
+                            
+                            # Create age group distribution (only valid ages)
+                            age_dist = age_groups_valid.value_counts()
+                            
+                            # Reorder for logical display (youngest to oldest)
+                            desired_order = ['Children (0-11)', 'Adolescents (12-17)', 'Adults (18-39)', 
+                                           'Middle-aged (40-59)', 'Elderly (60+)']
+                            age_dist_ordered = age_dist.reindex([cat for cat in desired_order if cat in age_dist.index])
+                            
+                            # Calculate percentages
+                            age_percentages = (age_dist_ordered / age_dist_ordered.sum() * 100).round(1)
+                            
+                            # Purple color scheme for age distribution
+                            age_colors = ['#e1bee7', '#ce93d8', '#ba68c8', '#ab47bc', '#9c27b0']
+                            fig_age = go.Figure(data=[
+                                go.Bar(
+                                    x=age_dist_ordered.index,
+                                    y=age_dist_ordered.values,
+                                    marker_color=age_colors[:len(age_dist_ordered)],
+                                    text=[f"{pct}%" for pct in age_percentages.values],
+                                    textposition='auto'
+                                )
+                            ])
+                            fig_age.update_layout(
+                                title="Victim Distribution by Age Group",
+                                xaxis_title="Age Group",
+                                yaxis_title="Number of Incidents",
+                                showlegend=False,
+                                height=400,
+                                xaxis=dict(tickangle=-45)
+                            )
+                            st.plotly_chart(fig_age, use_container_width=True)
+                    
+                    with col4:
+                        # Add some statistics about age distribution
+                        if 'Vict Age' in area_data.columns:
+                            st.markdown("#### 📊 Age Group Statistics")
+                            
+                            # Calculate statistics
+                            victim_ages_clean = pd.to_numeric(area_data['Vict Age'], errors='coerce')
+                            valid_ages = victim_ages_clean.dropna()
+                            valid_ages = valid_ages[(valid_ages >= 0) & (valid_ages <= 120)]  # Filter realistic ages
+                            
+                            if len(valid_ages) > 0:
+                                avg_age = valid_ages.mean()
+                                median_age = valid_ages.median()
+                                # Use only valid age groups for most vulnerable calculation
+                                most_vulnerable_group = age_groups_valid.value_counts().index[0] if len(age_groups_valid.value_counts()) > 0 else "No data"
+                                
+                                st.markdown(f"""
+                                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #9c27b0;">
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>📈 Average Age:</strong> {avg_age:.1f} years
+                                    </div>
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>📊 Median Age:</strong> {median_age:.0f} years
+                                    </div>
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>🎯 Most Affected Group:</strong><br>
+                                        <span style="color: #9c27b0; font-weight: 600;">{most_vulnerable_group}</span>
+                                    </div>
+                                    <div style="font-size: 11px; color: #6c757d; margin-top: 10px;">
+                                        Based on {len(valid_ages):,} valid age records
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            else:
+                                st.info("No valid age data available for analysis")
+                        else:
+                            st.info("Age data not available in this dataset")
+                    
+                    # Add Crime Risk Levels Distribution Chart - FIXED VERSION with purple colors
+                    col5, col6 = st.columns(2)
+                    
+                    with col5:
+                        if 'Risk Level' in area_data.columns:
+                            st.markdown("#### 🚨 Crime Risk Levels Distribution")
+                            risk_dist = area_data['Risk Level'].value_counts()
+                            
+                            # Create enhanced risk chart with colors - ONLY PERCENTAGES
+                            risk_colors = {'High Risk': '#6a1b9a', 'Medium Risk': '#8e24aa', 'Low Risk': '#ab47bc'}
+                            fig_risk = go.Figure(data=[
+                                go.Bar(
+                                    x=risk_dist.index,
+                                    y=risk_dist.values,
+                                    marker_color=[risk_colors.get(risk, '#cccccc') for risk in risk_dist.index],
+                                    text=[f"{count/len(area_data)*100:.1f}%" for count in risk_dist.values],
+                                    textposition='auto'
+                                )
+                            ])
+                            
+                            fig_risk.update_layout(
+                                title=f"Crime Risk Levels in {selected_area}",
+                                xaxis_title="Risk Level",
+                                yaxis_title="Number of Incidents",
+                                showlegend=False,
+                                height=400
+                            )
+                            
+                            st.plotly_chart(fig_risk, use_container_width=True)
+                    
+                    with col6:
+                        st.markdown("#### 📊 Risk Level Statistics")
+                        if 'Risk Level' in area_data.columns:
+                            risk_counts = area_data['Risk Level'].value_counts()
+                            total_crimes = len(area_data)
+                            
+                            high_risk_pct = (risk_counts.get('High Risk', 0) / total_crimes * 100) if total_crimes > 0 else 0
+                            medium_risk_pct = (risk_counts.get('Medium Risk', 0) / total_crimes * 100) if total_crimes > 0 else 0
+                            low_risk_pct = (risk_counts.get('Low Risk', 0) / total_crimes * 100) if total_crimes > 0 else 0
+                            
+                            st.markdown(f"""
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #9c27b0;">
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="color: #6a1b9a;">🔴 High Risk:</strong> {risk_counts.get('High Risk', 0):,} ({high_risk_pct:.1f}%)
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="color: #8e24aa;">🟡 Medium Risk:</strong> {risk_counts.get('Medium Risk', 0):,} ({medium_risk_pct:.1f}%)
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="color: #ab47bc;">🟢 Low Risk:</strong> {risk_counts.get('Low Risk', 0):,} ({low_risk_pct:.1f}%)
+                                </div>
+                                <div style="font-size: 11px; color: #6c757d; margin-top: 10px;">
+                                    Based on {total_crimes:,} total incidents
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # FIXED: PIE CHART FOR TOP 5 CRIMES with teal colors
+                    if 'Crm Cd Desc' in area_data.columns:
+                        st.markdown("#### 🚨 Top 5 Crime Types Distribution")
+                        crime_types = area_data['Crm Cd Desc'].value_counts().head(5)
+                        
+                        # Calculate percentages
+                        total_crimes = len(area_data)
+                        crime_percentages = (crime_types / total_crimes * 100).round(1)
+                        
+                        # Create a pie chart for top 5 crimes
+                        crime_data_for_plot = pd.DataFrame({
+                            'Crime Type': crime_percentages.index,
+                            'Percentage': crime_percentages.values,
+                            'Count': crime_types.values
+                        })
+                        
+                        # Teal color scheme for pie chart (complementary to purple)
+                        teal_colors = ['#009688', '#00897b', '#00796b', '#00695c', '#004d40']
+                        
+                        # Create the pie chart
+                        fig = go.Figure(data=[
+                            go.Pie(
+                                labels=crime_data_for_plot['Crime Type'],
+                                values=crime_data_for_plot['Percentage'],
+                                marker_colors=teal_colors[:len(crime_data_for_plot)],
+                                textinfo='label+percent',
+                                textposition='auto',
+                                hovertemplate='<b>%{label}</b><br>' +
+                                            'Percentage: %{percent}<br>' +
+                                            'Count: %{customdata}<br>' +
+                                            '<extra></extra>',
+                                customdata=crime_data_for_plot['Count']
+                            )
+                        ])
+                        
+                        # Update layout for better readability with smaller legend font
+                        fig.update_layout(
+                            title=f"Top 5 Crime Types in {selected_area}",
+                            font=dict(size=12),
+                            height=500,
+                            showlegend=True,
+                            legend=dict(
+                                orientation="v",
+                                yanchor="middle",
+                                y=0.5,
+                                xanchor="left",
+                                x=1.05,
+                                font=dict(size=9)  # Smaller font for legend
+                            )
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Area-specific safety recommendations
+                    st.markdown("#### 🛡️ Area-Specific Safety Tips")
+                    if 'Time of Day' in area_data.columns:
+                        peak_time = area_data['Time of Day'].mode()[0] if not area_data['Time of Day'].mode().empty else "Any Time"
+                        if peak_time == "Night":
+                            st.warning(f"🌙 **Peak crime time in {selected_area}**: Night hours. Avoid traveling through this area at night when possible.")
+                        elif peak_time == "Evening":
+                            st.info(f"🌆 **Peak crime time in {selected_area}**: Evening hours. Use extra caution during evening.")
+                        else:
+                            st.success(f"☀️ **Peak crime time in {selected_area}**: {peak_time}. Generally safer conditions.")
+                    
+                    # FIXED: Crime-Specific Precautions in ONE HIGHLIGHTED BOX
+                    if 'Crm Cd Desc' in area_data.columns:
+                        top_crimes = area_data['Crm Cd Desc'].value_counts().head(3)
+                        st.markdown("##### 🎯 Crime-Specific Precautions")
+                        
+                        # Create bullet points for crime-specific precautions
+                        precautions_list = []
+                        for i, (crime, count) in enumerate(top_crimes.items()):
+                            crime_lower = str(crime).lower()
+                            
+                            if any(word in crime_lower for word in ['theft', 'burglary', 'robbery']):
+                                precautions_list.append(f"🔒 **{crime}** ({count} incidents): Secure valuables, avoid displaying expensive items")
+                            elif any(word in crime_lower for word in ['assault', 'battery']):
+                                precautions_list.append(f"⚠️ **{crime}** ({count} incidents): Stay in well-lit areas, avoid isolated locations")
+                            elif any(word in crime_lower for word in ['vehicle', 'auto']):
+                                precautions_list.append(f"🚗 **{crime}** ({count} incidents): Park in secure areas, lock vehicles, remove valuables")
+                            else:
+                                precautions_list.append(f"📊 **{crime}** ({count} incidents): Stay alert and follow general safety precautions")
+                        
+                        # Display all precautions in one highlighted box with bullet points
+                        precautions_html = "<br>".join([f"• {precaution}" for precaution in precautions_list])
+                        
+                        st.markdown(f"""
+                        <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 10px 0;">
+                            <div style="color: #856404; font-size: 14px; line-height: 1.6;">
+                                {precautions_html}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+            
+            else:
+                st.info(f"No crime data available for {selected_area}")
     
     ENHANCED_AVAILABLE = True
     
@@ -756,7 +1088,6 @@ except ImportError:
         def run_area_analysis():
             """Keep your existing area analysis code here"""
             st.markdown("### 📊 Crime Analysis by Area")
-            # Include your existing area analysis implementation
             st.info("Area analysis feature - implementation needed")
         
         ENHANCED_AVAILABLE = False
