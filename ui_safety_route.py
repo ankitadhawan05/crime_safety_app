@@ -24,14 +24,14 @@ def render_enhanced_ui():
             st.header("🧠 Intelligent Route Generator")
             st.markdown("Routes are dynamically colored based on **actual crime zone proximity**:")
             
-            # Safety level explanation
+            # Safety level explanation - UPDATED PERCENTAGES
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.success("🟢 **Safe Route** - Avoids crime zones")
+                st.success("🟢 **Safe Route** - Minimal crime zone exposure (<20%)")
             with col2:
-                st.warning("🟡 **Moderate Route** - Some crime exposure")  
+                st.warning("🟡 **Moderate Route** - Some crime zone exposure (20-40%)")  
             with col3:
-                st.error("🔴 **High Risk Route** - Passes through crime zones")
+                st.error("🔴 **High Risk Route** - Significant crime exposure (>40%)")
             
             st.markdown("---")
             
@@ -112,7 +112,7 @@ def render_enhanced_ui():
                     st.warning("⚠️ Please select different start and destination areas.")
                     return
                 
-                # Show what the system will do
+                # Show what the system will do - UPDATED PERCENTAGES
                 with st.expander("🧠 What the AI is doing", expanded=False):
                     st.markdown(f"""
                     **Route Analysis Process:**
@@ -123,9 +123,9 @@ def render_enhanced_ui():
                     5. 🛡️ **Safety filtering**: Showing routes matching **{safety_priority}** preference
                     
                     **Color Logic:**
-                    - 🟢 **Green**: <5% of route passes through high-crime zones
-                    - 🟡 **Yellow**: 5-15% passes through high-crime zones  
-                    - 🔴 **Red**: >15% passes through high-crime zones
+                    - 🟢 **Green**: <20% of route passes through high-crime zones
+                    - 🟡 **Yellow**: 20-40% passes through high-crime zones  
+                    - 🔴 **Red**: >40% passes through high-crime zones
                     """)
                 
                 st.markdown("---")
@@ -204,15 +204,15 @@ def render_enhanced_ui():
                         elif "Morning" in time_of_travel:
                             st.success("☀️ **Morning Travel**: Generally safest time period for travel.")
                         
-                        # Route interpretation guide
+                        # Route interpretation guide - UPDATED PERCENTAGES
                         with st.expander("📖 How to Read Your Routes", expanded=False):
                             st.markdown(f"""
                             **Understanding Your {time_of_travel} Routes:**
                             
                             **🎨 Color Meanings:**
-                            - 🟢 **Green Route**: Actively avoids crime zones detected in {time_of_travel} data
-                            - 🟡 **Yellow Route**: Passes near some crime areas but generally safe  
-                            - 🔴 **Red Route**: Direct path that may go through higher-crime zones
+                            - 🟢 **Green Route**: Minimal crime zone exposure (<20%)
+                            - 🟡 **Yellow Route**: Some crime zone exposure (20-40%)
+                            - 🔴 **Red Route**: Significant crime exposure (>40%)
                             
                             **🕐 Time-Based Analysis:**
                             - Routes adapt to **{time_of_travel}** crime patterns
@@ -442,7 +442,7 @@ def render_enhanced_ui():
                 enable_caching = st.checkbox("💾 Enable Data Caching", value=True,
                     help="Cache data for faster loading (recommended)")
             
-            # Safety thresholds
+            # Safety thresholds - UPDATED PERCENTAGES
             st.markdown("### 🛡️ Safety Classification Thresholds")
             
             col1, col2, col3 = st.columns(3)
@@ -450,14 +450,14 @@ def render_enhanced_ui():
             with col1:
                 st.success("🟢 **Safe Route (Green)**")
                 green_threshold = st.slider("Max High Crime Exposure", 
-                    min_value=0, max_value=15, value=5, key="green_thresh",
+                    min_value=0, max_value=30, value=20, key="green_thresh",
                     help="% of route that can pass through high-crime areas")
                 st.write(f"≤ {green_threshold}% high-crime exposure")
             
             with col2:
                 st.warning("🟡 **Moderate Route (Yellow)**") 
                 yellow_threshold = st.slider("Max High Crime Exposure", 
-                    min_value=5, max_value=25, value=15, key="yellow_thresh",
+                    min_value=20, max_value=50, value=40, key="yellow_thresh",
                     help="% of route that can pass through high-crime areas")
                 st.write(f"{green_threshold+1}-{yellow_threshold}% high-crime exposure")
             
