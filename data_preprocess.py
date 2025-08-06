@@ -18,21 +18,20 @@ def load_crime_data():
             st.error(f"Directory contents: {os.listdir('.')}")
             return pd.DataFrame()
         
-        # Check file size (Streamlit Cloud has memory limits)
+        # Check file size (Streamlit Cloud has memory limits) - SILENT CHECK
         file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-        if file_size_mb > 100:  # 100MB limit warning
-            st.warning(f"⚠️ Large data file detected: {file_size_mb:.1f}MB - may cause memory issues on cloud")
+        # Removed the warning message for cleaner UI
         
         # Load the parquet file
         df = pd.read_parquet(file_path)
         
-        # Cloud optimization: Sample data if too large for cloud deployment
+        # Cloud optimization: Sample data if too large for cloud deployment - SILENT SAMPLING
         initial_size = len(df)
         if len(df) > 100000:  # Limit for cloud deployment
-            st.info(f"📊 Sampling data for cloud deployment: {len(df)} → 100000 rows")
+            # Removed: st.info(f"📊 Sampling data for cloud deployment: {len(df)} → 100000 rows")
             df = df.sample(n=100000, random_state=42)
         elif len(df) > 50000:
-            st.info(f"📊 Using subset for better performance: {len(df)} → 50000 rows")
+            # Removed: st.info(f"📊 Using subset for better performance: {len(df)} → 50000 rows")
             df = df.sample(n=50000, random_state=42)
         
         # Reset index to ensure clean indexing from the start
@@ -57,14 +56,9 @@ def load_crime_data():
         
         if initial_len != final_len:
             print(f"Dropped {initial_len - final_len} rows with missing critical data")
-            if st.sidebar:  # Only show in sidebar if available
-                st.sidebar.info(f"📊 Cleaned data: {initial_len} → {final_len} records")
+            # Removed sidebar info message for cleaner UI
         
-        # Success message
-        st.success(f"✅ Data loaded successfully: {len(df)} records")
-        if initial_size != len(df):
-            st.info(f"📈 Optimized from {initial_size} to {len(df)} records for cloud performance")
-        
+        # CLEAN RETURN - No verbose success messages
         return df
         
     except FileNotFoundError:
@@ -209,8 +203,7 @@ def preprocess_for_clustering(_df):
         if len(df) != initial_len:
             dropped_count = initial_len - len(df)
             print(f"Dropped {dropped_count} rows with missing values during preprocessing")
-            if dropped_count > initial_len * 0.5:  # More than 50% dropped
-                st.warning(f"⚠️ Dropped {dropped_count} rows ({dropped_count/initial_len*100:.1f}%) with missing data")
+            # Removed verbose warning message for cleaner UI
         
         if df.empty:
             st.error("❌ No valid data remaining after cleaning")
@@ -283,10 +276,7 @@ def preprocess_for_clustering(_df):
             # Return the encoded dataframe length-matched version of original
             df = df.iloc[:len(df_encoded)].reset_index(drop=True)
         
-        # Success message
-        if st.sidebar:
-            st.sidebar.success(f"✅ Preprocessing complete: {len(df_encoded)} records, {len(extra_cols)} features")
-        
+        # CLEAN RETURN - No verbose success messages (individual pages will show their own)
         return df_encoded, extra_cols
         
     except Exception as e:
@@ -439,9 +429,7 @@ def check_memory_usage():
         process = psutil.Process(os.getpid())
         memory_mb = process.memory_info().rss / 1024 / 1024
         
-        if st.sidebar:
-            st.sidebar.info(f"💾 Memory usage: {memory_mb:.1f} MB")
-        
+        # Removed sidebar message for cleaner UI
         return memory_mb
     except ImportError:
         print("psutil not available, cannot check memory usage")
