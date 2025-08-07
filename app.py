@@ -430,16 +430,6 @@ try:
                         
                         # THE MAP WOULD BE DISPLAYED HERE BY THE enhanced_route FUNCTION
                         
-                        # ROUTE SAFETY GUIDE - Now appears BELOW the map with updated percentages
-                        st.markdown("### 📊 Route Safety Guide")
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.success("🟢 **Safe Routes** - Minimal crime zone exposure (<20%)")
-                        with col2:
-                            st.warning("🟡 **Moderate Routes** - Some crime zone exposure (20-40%)")
-                        with col3:
-                            st.error("🔴 **High Risk Routes** - Significant crime exposure (>40%)")
-                        
                         # Provide contextual feedback based on settings
                         if safety_priority == "maximum_safety":
                             st.info("🛡️ **Maximum Safety Mode**: Only showing routes with minimal crime zone exposure")
