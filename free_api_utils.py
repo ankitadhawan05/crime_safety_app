@@ -915,11 +915,11 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving", 
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.success("**🟢 Safe Routes**\nMinimal crime zone exposure (<5%)")
+            st.success("**🟢 Safe Routes**\nMinimal crime zone exposure (<20%)")
         with col2:
-            st.warning("**🟡 Moderate Routes**\nSome crime zone exposure (5-15%)")
+            st.warning("**🟡 Moderate Routes**\nSome crime zone exposure (20-40%)")
         with col3:
-            st.error("**🔴 High Risk Routes**\nSignificant crime exposure (>15%)")
+            st.error("**🔴 High Risk Routes**\nSignificant crime exposure (>40%)")
         
         # ENHANCED: Safety tips with time-awareness
         st.markdown(f"### 🛡️ Safety Tips for {travel_mode.title()} Travel")
