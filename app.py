@@ -1329,6 +1329,7 @@ else:
         menu_options,
         index=menu_index,
         help="Select the feature you want to use"
+        key="main_navigation_menu"
     )
     
     # Update current page when menu changes
