@@ -1328,7 +1328,7 @@ else:
         "🧭 Navigation",
         menu_options,
         index=menu_index,
-        help="Select the feature you want to use"
+        help="Select the feature you want to use",
         key="main_navigation_menu"
     )
     
