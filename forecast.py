@@ -9,8 +9,7 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
-# OPTIMIZATION: Cache data loading
-@st.cache_data(ttl=3600)  # Cache for 1 hour
+@st.cache_data
 def load_data():
     """Load and preprocess crime data"""
     try:
@@ -56,8 +55,6 @@ def safe_int_conversion(value, default=0):
     except (ValueError, TypeError, OverflowError):
         return default
 
-# OPTIMIZATION: Cache time series preparation
-@st.cache_data(ttl=1800)
 def prepare_time_series(df, crime_type, frequency='M'):
     """
     Prepare time series data for forecasting
@@ -180,8 +177,6 @@ def clean_forecast_values(forecast_values):
         # Return array of zeros as fallback
         return np.zeros(len(forecast_values))
 
-# OPTIMIZATION: Cache street analysis
-@st.cache_data(ttl=1800)
 def get_top_crime_streets(df, area_name, top_n=3):
     """Get top streets with highest crime count for a specific area"""
     try:
@@ -206,8 +201,6 @@ def get_top_crime_streets(df, area_name, top_n=3):
     except Exception as e:
         return []
 
-# OPTIMIZATION: Cache gender analysis
-@st.cache_data(ttl=1800)
 def get_most_affected_gender(df, area_name, crime_type):
     """Get the gender most affected by a specific crime type in an area"""
     try:
@@ -237,8 +230,6 @@ def get_most_affected_gender(df, area_name, crime_type):
     except Exception as e:
         return 'individuals'
 
-# OPTIMIZATION: Cache risk probability calculations
-@st.cache_data(ttl=1800)
 def calculate_risk_probability(df, area_name, crime_type, forecast_periods, selected_gender=None):
     """Calculate risk probability based on actual historical crime data for the specific area and gender"""
     try:
@@ -337,8 +328,6 @@ def calculate_risk_probability(df, area_name, crime_type, forecast_periods, sele
         area_hash = hash(area_name + crime_type + str(selected_gender)) % 60
         return max(5, min(50, 8 + area_hash))
 
-# OPTIMIZATION: Cache crime risk streets
-@st.cache_data(ttl=1800)
 def get_crime_risk_streets(df, area_name=None, gender=None, crime_types=None, top_n=5):
     """Get high-risk streets based on crime data"""
     try:
@@ -511,30 +500,6 @@ def display_intelligent_forecast_message(message_data, df, area_name, selected_g
     except Exception as e:
         st.error(f"Error creating safety message: {e}")
 
-# OPTIMIZATION: Cache SARIMAX model training
-@st.cache_resource(ttl=1800)
-def train_sarimax_model(ts, frequency, crime_type):
-    """Train and cache SARIMAX model"""
-    try:
-        # Try seasonal model first
-        if frequency == 'M' and len(ts) >= 24:  # Need at least 2 years for seasonal
-            model = SARIMAX(ts, order=(1,1,1), seasonal_order=(1,1,1,12))
-        elif frequency == 'W' and len(ts) >= 52:  # Need at least 1 year for seasonal
-            model = SARIMAX(ts, order=(1,1,1), seasonal_order=(1,1,1,52))
-        else:
-            # Non-seasonal model
-            model = SARIMAX(ts, order=(1,1,1))
-        
-        results = model.fit(disp=False, maxiter=100)
-        return results
-        
-    except Exception as model_error:
-        # Fallback to simple ARIMA
-        st.warning(f"Using simplified model for {crime_type}: {str(model_error)}")
-        model = SARIMAX(ts, order=(1,1,0))
-        results = model.fit(disp=False, maxiter=50)
-        return results
-
 def forecast_crime(df, area_name=None, gender=None, top_n=10, months_ahead=6):
     """Enhanced crime forecasting with intelligent messaging"""
     
@@ -618,16 +583,32 @@ def forecast_crime(df, area_name=None, gender=None, top_n=10, months_ahead=6):
     
     for i, crime in enumerate(top_crimes):
         try:
-            # Prepare time series (cached)
+            # Prepare time series
             ts = prepare_time_series(filtered_df, crime, frequency)
             
             if ts.empty or len(ts) < 10:  # Need minimum data points
                 st.warning(f"Insufficient data for {crime} (only {len(ts)} data points)")
                 continue
             
-            # Fit SARIMAX model (cached)
-            with st.spinner(f"Forecasting {crime}... (cached for repeated use)"):
-                results = train_sarimax_model(ts, frequency, crime)
+            # Fit SARIMAX model
+            with st.spinner(f"Forecasting {crime}..."):
+                try:
+                    # Try seasonal model first
+                    if frequency == 'M' and len(ts) >= 24:  # Need at least 2 years for seasonal
+                        model = SARIMAX(ts, order=(1,1,1), seasonal_order=(1,1,1,12))
+                    elif frequency == 'W' and len(ts) >= 52:  # Need at least 1 year for seasonal
+                        model = SARIMAX(ts, order=(1,1,1), seasonal_order=(1,1,1,52))
+                    else:
+                        # Non-seasonal model
+                        model = SARIMAX(ts, order=(1,1,1))
+                    
+                    results = model.fit(disp=False, maxiter=100)
+                    
+                except Exception as model_error:
+                    # Fallback to simple ARIMA
+                    st.warning(f"Using simplified model for {crime}: {str(model_error)}")
+                    model = SARIMAX(ts, order=(1,1,0))
+                    results = model.fit(disp=False, maxiter=50)
                 
                 # Generate forecast
                 forecast_raw = results.forecast(steps=periods)
