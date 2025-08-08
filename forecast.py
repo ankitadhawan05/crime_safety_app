@@ -420,11 +420,13 @@ def generate_intelligent_forecast_message(forecasts, df, area_name=None, gender=
         location_text = f"in {area_name}" if area_name else "in the analyzed areas"
         gender_text = {"M": "males", "F": "females", "X": "individuals"}.get(gender, "individuals")
         
-        # Time period mapping
+        # Time period mapping - UPDATED WITH NEW PERIODS
         period_text = {
-            "Week": "the coming weeks",
-            "Month": "the next 3 months", 
-            "Quarter": "the next 6 months"
+            "1 Month": "the next month",
+            "2 Months": "the next 2 months", 
+            "Quarter (3 months)": "the next quarter",
+            "Half Year (6 months)": "the next 6 months",
+            "Full Year (12 months)": "the next year"
         }.get(forecast_period, "the forecast period")
         
         # Generate message components
@@ -463,8 +465,14 @@ def display_intelligent_forecast_message(message_data, df, area_name, selected_g
         # Calculate risk probability with gender consideration - NOW WITH 5 PARAMETERS
         risk_probability = calculate_risk_probability(df, area_name, top_crime, forecast_months, selected_gender)
         
-        # Create time period text
-        period_text = "the next month" if forecast_months == 1 else f"the next {forecast_months} months"
+        # Create time period text - UPDATED WITH NEW PERIODS
+        period_text = {
+            1: "the next month",
+            2: "the next 2 months",
+            3: "the next quarter",
+            6: "the next 6 months",
+            12: "the next year"
+        }.get(forecast_months, f"the next {forecast_months} months")
         
         # Create risk prediction message based on gender selection
         if selected_gender is None:  # This means "All" was selected
@@ -610,19 +618,12 @@ def forecast_crime(df, area_name=None, gender=None, top_n=10, months_ahead=6):
         return {}
 
     # Determine frequency based on forecast period
-    frequency_map = {1: 'W', 3: 'M', 6: 'M'}  # Week, Month, Quarter
-    frequency = frequency_map.get(months_ahead, 'M')
-    
-    # Adjust periods based on frequency
-    if frequency == 'W':
+    if months_ahead <= 1:
+        frequency = 'W'  # Weekly frequency for 1 month
         periods = months_ahead * 4  # Approximate weeks in months
-        forecast_period = "Week"
-    elif months_ahead == 3:
-        periods = months_ahead
-        forecast_period = "Month"
     else:
+        frequency = 'M'  # Monthly frequency for longer periods
         periods = months_ahead
-        forecast_period = "Quarter"
 
     # Get top crimes
     try:
@@ -803,9 +804,18 @@ def forecast_crime(df, area_name=None, gender=None, top_n=10, months_ahead=6):
         for crime, fig in forecast_figures.items():
             st.plotly_chart(fig, use_container_width=True)
         
-        # NEW: Generate and display simplified forecast message
+        # Generate and display simplified forecast message with UPDATED PERIOD NAME
+        # Get the actual period name from the forecast
+        period_name = {
+            1: "1 Month",
+            2: "2 Months",
+            3: "Quarter (3 months)",
+            6: "Half Year (6 months)",
+            12: "Full Year (12 months)"
+        }.get(months_ahead, f"{months_ahead} months")
+        
         message_data = generate_intelligent_forecast_message(
-            forecasts, df, area_name, gender, forecast_period
+            forecasts, df, area_name, gender, period_name
         )
         
         if message_data and area_name:
@@ -835,13 +845,27 @@ def run_forecast():
         gender_map = {"Male": "M", "Female": "F", "Other": "X"}
         selected_gender = None if gender_input == "All" else gender_map.get(gender_input)
 
-        # Forecast period
+        # UPDATED FORECAST PERIOD WITH CLEAR NAMES
         forecast_period = st.sidebar.selectbox(
             "Forecast Period", 
-            ["Week", "Month", "Quarter"],
-            help="Week=4 weeks, Month=3 months, Quarter=6 months"
+            [
+                "1 Month",
+                "2 Months",
+                "Quarter (3 months)",
+                "Half Year (6 months)",
+                "Full Year (12 months)"
+            ],
+            help="Select how far ahead to forecast"
         )
-        months_lookup = {"Week": 1, "Month": 3, "Quarter": 6}
+        
+        # UPDATED MAPPING WITH CORRECT PERIODS
+        months_lookup = {
+            "1 Month": 1,
+            "2 Months": 2,
+            "Quarter (3 months)": 3,
+            "Half Year (6 months)": 6,
+            "Full Year (12 months)": 12
+        }
         months_ahead = months_lookup[forecast_period]
 
         # Number of top crimes to forecast
