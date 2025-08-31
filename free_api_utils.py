@@ -444,7 +444,7 @@ class RouteOptimizer:
         self.full_crime_df = crime_df
         self.time_of_travel = time_of_travel
         self.crime_df = crime_df
-        self.prob_estimator = SimplifiedProbabilisticCrimeEstimator(crime_df)
+        self.prob_estimator = BaselinePoissonCrimeEstimator(crime_df)
         
         # Determine if filtering is active
         self.is_time_filtered = time_of_travel != "Any Time"
