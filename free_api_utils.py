@@ -744,7 +744,7 @@ class RouteOptimizer:
         
         return normalized
 
-# ================= ENHANCED ROUTE GENERATION WITH WAYPOINTS - FIXED =================
+# ================= ENHANCED ROUTE GENERATION WITH WAYPOINTS =================
 def get_direct_osrm_route(start_coords, end_coords, travel_mode="driving"):
     """Helper function to get a single direct route from OSRM"""
     profile_mapping = {
@@ -1203,8 +1203,7 @@ def smooth_route(route, smoothing_factor=0.3):
     smoothed.append(route[-1])  # Keep end point
     return smoothed
 
-
-# ================= ROUTE OPTIMIZATION WITH VARIANTS - FIXED =================
+# ================= ROUTE OPTIMIZATION WITH VARIANTS =================
 def optimize_and_select_routes(routes_dict, crime_df, start_coords, end_coords,
                                travel_mode="driving", time_of_travel="Any Time",
                                safety_priority="balanced", generate_variants=True):
@@ -1225,9 +1224,9 @@ def optimize_and_select_routes(routes_dict, crime_df, start_coords, end_coords,
     
     # For balanced mode, ensure we have multiple real road routes
     if safety_priority == "balanced":
-        # Making sure we have at least 2 routes
+        # Make sure we have at least 2 routes
         if len(routes_dict) < 2:
-            # alternate routes fixed
+            # This shouldn't happen with the fixed generation, but as a safety check
             routes, route_info = get_free_osrm_routes_with_waypoints(
                 start_coords, end_coords, travel_mode, num_alternatives=3
             )
