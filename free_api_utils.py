@@ -1,4 +1,3 @@
-
 # free_api_utils.py - with probabilistic crime model and enhanced alternate routes
 import requests
 import pandas as pd
