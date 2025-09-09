@@ -1,4 +1,5 @@
-# free_api_utils.py - with probabilistic crime model 
+
+# free_api_utils.py - with probabilistic crime model and enhanced alternate routes
 import requests
 import pandas as pd
 import folium
@@ -744,9 +745,133 @@ class RouteOptimizer:
         
         return normalized
 
-# ================= ROUTE GENERATION AND VARIANTS =================
-def get_free_osrm_routes(start_coords, end_coords, travel_mode="driving"):
-    """Get real road routes from free OSRM public server"""
+# ================= ENHANCED ROUTE GENERATION WITH WAYPOINTS - FIXED =================
+def get_direct_osrm_route(start_coords, end_coords, travel_mode="driving"):
+    """Helper function to get a single direct route from OSRM"""
+    profile_mapping = {
+        "driving": "driving",
+        "walking": "foot", 
+        "cycling": "bike"
+    }
+    profile = profile_mapping.get(travel_mode, "driving")
+    
+    start_lat, start_lon = start_coords
+    end_lat, end_lon = end_coords
+    
+    url = f"http://{OSRM_HOST}/route/v1/{profile}/{start_lon},{start_lat};{end_lon},{end_lat}"
+    params = {
+        "geometries": "geojson",
+        "steps": "false",
+        "overview": "full"
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("code") == "Ok" and data.get("routes"):
+                route = data["routes"][0]
+                return {
+                    "coordinates": route["geometry"]["coordinates"],
+                    "distance": f"{route.get('distance', 0)/1000:.1f} km",
+                    "duration": f"{route.get('duration', 0)//60:.0f} min",
+                    "distance_meters": route.get('distance', 0),
+                    "duration_seconds": route.get('duration', 0)
+                }
+    except:
+        pass
+    return None
+
+def generate_forced_alternatives(start_coords, end_coords, travel_mode="driving", num_needed=2):
+    """Generate alternative routes with more aggressive waypoint placement"""
+    routes = []
+    start_lat, start_lon = start_coords
+    end_lat, end_lon = end_coords
+    
+    profile_mapping = {
+        "driving": "driving",
+        "walking": "foot", 
+        "cycling": "bike"
+    }
+    profile = profile_mapping.get(travel_mode, "driving")
+    
+    # Calculate the direct line bearing and perpendicular offsets
+    bearing = math.atan2(end_lon - start_lon, end_lat - start_lat)
+    
+    # Distance for waypoint offset (35% for more variation)
+    total_distance = math.sqrt((end_lat - start_lat)**2 + (end_lon - start_lon)**2)
+    
+    # Multiple strategies with larger offsets
+    waypoint_strategies = []
+    
+    for offset_factor in [0.35, 0.45, 0.25, 0.55]:  # Varying offsets
+        for angle_offset in [math.pi/2, -math.pi/2, math.pi/3, -math.pi/3, math.pi/4, -math.pi/4]:
+            offset_distance = total_distance * offset_factor
+            waypoint_bearing = bearing + angle_offset
+            
+            waypoint_strategy = {
+                'lat': (start_lat + end_lat) / 2 + offset_distance * math.cos(waypoint_bearing),
+                'lon': (start_lon + end_lon) / 2 + offset_distance * math.sin(waypoint_bearing)
+            }
+            waypoint_strategies.append(waypoint_strategy)
+    
+    routes_generated = 0
+    
+    for waypoint_strategy in waypoint_strategies:
+        if routes_generated >= num_needed:
+            break
+            
+        try:
+            # Build the waypoints string for OSRM
+            waypoints_str = f"{start_lon},{start_lat};{waypoint_strategy['lon']},{waypoint_strategy['lat']};{end_lon},{end_lat}"
+            
+            # Request route through waypoint
+            url = f"http://{OSRM_HOST}/route/v1/{profile}/{waypoints_str}"
+            params = {
+                "geometries": "geojson",
+                "steps": "false",
+                "overview": "full"
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get("code") == "Ok" and data.get("routes"):
+                    route = data["routes"][0]
+                    coordinates = route["geometry"]["coordinates"]
+                    
+                    # Check if this route is different from existing routes
+                    is_different = True
+                    for existing_route in routes:
+                        if routes_are_similar(coordinates, existing_route['coordinates'], threshold=0.5):
+                            is_different = False
+                            break
+                    
+                    if is_different:
+                        distance = route.get("distance", 0)
+                        duration = route.get("duration", 0)
+                        
+                        route_data = {
+                            "coordinates": coordinates,
+                            "distance": f"{distance/1000:.1f} km",
+                            "duration": f"{duration//60:.0f} min",
+                            "distance_meters": distance,
+                            "duration_seconds": duration
+                        }
+                        routes.append(route_data)
+                        routes_generated += 1
+        
+        except Exception:
+            continue
+    
+    return routes
+
+def get_free_osrm_routes_with_waypoints(start_coords, end_coords, travel_mode="driving", num_alternatives=3):
+    """
+    FIXED VERSION: Always returns multiple routes using waypoints
+    """
     
     profile_mapping = {
         "driving": "driving",
@@ -758,11 +883,14 @@ def get_free_osrm_routes(start_coords, end_coords, travel_mode="driving"):
     start_lat, start_lon = start_coords
     end_lat, end_lon = end_coords
     
-    url = f"http://{OSRM_HOST}/route/v1/{profile}/{start_lon},{start_lat};{end_lon},{end_lat}"
+    routes = {}
+    route_info = []
     
+    # First, try to get the direct route with alternatives
+    url = f"http://{OSRM_HOST}/route/v1/{profile}/{start_lon},{start_lat};{end_lon},{end_lat}"
     params = {
         "geometries": "geojson",
-        "alternatives": "3",
+        "alternatives": "true",  # Request alternatives
         "steps": "false",
         "overview": "full"
     }
@@ -774,10 +902,8 @@ def get_free_osrm_routes(start_coords, end_coords, travel_mode="driving"):
             data = response.json()
             
             if data.get("code") == "Ok" and data.get("routes"):
-                routes = {}
-                route_info = []
-                
-                for idx, route in enumerate(data["routes"][:3]):
+                # Store all OSRM alternatives first
+                for idx, route in enumerate(data["routes"][:num_alternatives]):
                     coordinates = route["geometry"]["coordinates"]
                     distance = route.get("distance", 0)
                     duration = route.get("duration", 0)
@@ -790,22 +916,229 @@ def get_free_osrm_routes(start_coords, end_coords, travel_mode="driving"):
                         "duration_seconds": duration
                     }
                     route_info.append(route_data)
-                
-                sorted_routes = sorted(route_info, key=lambda x: x["duration_seconds"])
-                
-                # Store routes with generic names
-                for idx, route_data in enumerate(sorted_routes):
-                    routes[f"route_{idx}"] = route_data["coordinates"]
-                
-                return routes, route_info
+                    routes[f"osrm_route_{idx}"] = coordinates
         
-        return None, None
+    except Exception as e:
+        pass
+    
+    # ALWAYS generate additional waypoint alternatives to ensure we have enough routes
+    num_routes_needed = max(2, num_alternatives - len(routes))  # Always need at least 2 routes total
+    
+    if num_routes_needed > 0:
+        # Generate waypoint alternatives
+        waypoint_routes = generate_waypoint_alternatives(
+            start_coords, end_coords, travel_mode,
+            existing_routes=list(routes.values()),
+            num_needed=num_routes_needed
+        )
         
-    except Exception:
-        return None, None
+        for idx, route_data in enumerate(waypoint_routes):
+            routes[f"waypoint_route_{idx}"] = route_data["coordinates"]
+            route_info.append(route_data)
+    
+    # If still don't have enough routes, use forced alternatives with larger offsets
+    if len(routes) < 2:
+        forced_routes = generate_forced_alternatives(
+            start_coords, end_coords, travel_mode,
+            num_needed=2 - len(routes)
+        )
+        
+        for idx, route_data in enumerate(forced_routes):
+            routes[f"forced_route_{idx}"] = route_data["coordinates"]
+            route_info.append(route_data)
+    
+    # Absolute last resort - ensure at least one direct route
+    if len(routes) == 0:
+        direct_route = get_direct_osrm_route(start_coords, end_coords, travel_mode)
+        if direct_route:
+            routes["direct_route"] = direct_route["coordinates"]
+            route_info.append(direct_route)
+        else:
+            # Ultimate fallback - simulated route
+            return generate_simulated_routes(start_coords, end_coords, travel_mode), None
+    
+    # Final check: if we only have one route, duplicate it with a slight variation
+    if len(routes) == 1:
+        # Get a forced alternative
+        forced_alt = generate_forced_alternatives(start_coords, end_coords, travel_mode, num_needed=1)
+        if forced_alt:
+            routes["forced_alternative"] = forced_alt[0]["coordinates"]
+            route_info.append(forced_alt[0])
+    
+    return routes, route_info
+
+
+def generate_waypoint_alternatives(start_coords, end_coords, travel_mode="driving", 
+                                  existing_routes=None, num_needed=2):
+    """
+    Generate alternative routes using strategic waypoints to force different paths
+    All routes will follow real roads via OSRM
+    """
+    routes = []
+    start_lat, start_lon = start_coords
+    end_lat, end_lon = end_coords
+    
+    profile_mapping = {
+        "driving": "driving",
+        "walking": "foot", 
+        "cycling": "bike"
+    }
+    profile = profile_mapping.get(travel_mode, "driving")
+    
+    # Calculate the direct line bearing and perpendicular offsets
+    bearing = math.atan2(end_lon - start_lon, end_lat - start_lat)
+    perpendicular_bearing_left = bearing - math.pi / 2
+    perpendicular_bearing_right = bearing + math.pi / 2
+    
+    # Distance for waypoint offset (roughly 15-25% of total distance)
+    total_distance = math.sqrt((end_lat - start_lat)**2 + (end_lon - start_lon)**2)
+    offset_distance = total_distance * 0.2  # 20% offset
+    
+    # Generate waypoints that will create alternative routes
+    waypoint_strategies = [
+        # Northern arc route
+        {
+            'lat': (start_lat + end_lat) / 2 + offset_distance * math.cos(perpendicular_bearing_left),
+            'lon': (start_lon + end_lon) / 2 + offset_distance * math.sin(perpendicular_bearing_left)
+        },
+        # Southern arc route
+        {
+            'lat': (start_lat + end_lat) / 2 + offset_distance * math.cos(perpendicular_bearing_right),
+            'lon': (start_lon + end_lon) / 2 + offset_distance * math.sin(perpendicular_bearing_right)
+        },
+        # Eastern deviation route
+        {
+            'lat': (start_lat + end_lat) / 2 + offset_distance * 0.7 * math.cos(bearing + math.pi/4),
+            'lon': (start_lon + end_lon) / 2 + offset_distance * 0.7 * math.sin(bearing + math.pi/4)
+        },
+        # Western deviation route
+        {
+            'lat': (start_lat + end_lat) / 2 + offset_distance * 0.7 * math.cos(bearing - math.pi/4),
+            'lon': (start_lon + end_lon) / 2 + offset_distance * 0.7 * math.sin(bearing - math.pi/4)
+        }
+    ]
+    
+    routes_generated = 0
+    
+    for strategy_idx, waypoint_strategy in enumerate(waypoint_strategies):
+        if routes_generated >= num_needed:
+            break
+            
+        try:
+            # Build the waypoints string for OSRM
+            waypoints_str = f"{start_lon},{start_lat};{waypoint_strategy['lon']},{waypoint_strategy['lat']};{end_lon},{end_lat}"
+            
+            # Request route through waypoint
+            url = f"http://{OSRM_HOST}/route/v1/{profile}/{waypoints_str}"
+            params = {
+                "geometries": "geojson",
+                "steps": "false",
+                "overview": "full"
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get("code") == "Ok" and data.get("routes"):
+                    route = data["routes"][0]
+                    coordinates = route["geometry"]["coordinates"]
+                    
+                    # Check if this route is significantly different from existing routes
+                    is_different = True
+                    if existing_routes:
+                        for existing_route in existing_routes:
+                            if routes_are_similar(coordinates, existing_route, threshold=0.6):
+                                is_different = False
+                                break
+                    
+                    if is_different:
+                        distance = route.get("distance", 0)
+                        duration = route.get("duration", 0)
+                        
+                        route_data = {
+                            "coordinates": coordinates,
+                            "distance": f"{distance/1000:.1f} km",
+                            "duration": f"{duration//60:.0f} min",
+                            "distance_meters": distance,
+                            "duration_seconds": duration
+                        }
+                        routes.append(route_data)
+                        routes_generated += 1
+                        
+                        # Add to existing routes for future similarity checks
+                        if existing_routes is not None:
+                            existing_routes.append(coordinates)
+        
+        except Exception:
+            continue
+    
+    return routes
+
+
+def generate_all_waypoint_routes(start_coords, end_coords, travel_mode="driving", num_routes=3):
+    """
+    Generate all routes using waypoints when OSRM direct routing fails
+    """
+    routes = {}
+    route_info = []
+    
+    # Generate routes with waypoints
+    waypoint_routes = generate_waypoint_alternatives(
+        start_coords, end_coords, travel_mode, 
+        existing_routes=[], 
+        num_needed=num_routes
+    )
+    
+    for idx, route_data in enumerate(waypoint_routes):
+        routes[f"route_{idx}"] = route_data["coordinates"]
+        route_info.append(route_data)
+    
+    # If we still don't have any routes, try one more time with larger offsets
+    if len(routes) == 0:
+        # Try a simple direct route first
+        profile_mapping = {"driving": "driving", "walking": "foot", "cycling": "bike"}
+        profile = profile_mapping.get(travel_mode, "driving")
+        
+        start_lat, start_lon = start_coords
+        end_lat, end_lon = end_coords
+        
+        url = f"http://{OSRM_HOST}/route/v1/{profile}/{start_lon},{start_lat};{end_lon},{end_lat}"
+        params = {"geometries": "geojson", "overview": "full"}
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == "Ok" and data.get("routes"):
+                    route = data["routes"][0]
+                    routes["route_0"] = route["geometry"]["coordinates"]
+                    route_info.append({
+                        "coordinates": route["geometry"]["coordinates"],
+                        "distance": f"{route.get('distance', 0)/1000:.1f} km",
+                        "duration": f"{route.get('duration', 0)//60:.0f} min",
+                        "distance_meters": route.get('distance', 0),
+                        "duration_seconds": route.get('duration', 0)
+                    })
+        except:
+            pass
+    
+    # Absolute fallback - only if OSRM is completely unavailable
+    if len(routes) == 0:
+        return generate_simulated_routes(start_coords, end_coords, travel_mode), None
+    
+    return routes, route_info
+
+
+# Keep original function for backward compatibility but redirect to new one
+def get_free_osrm_routes(start_coords, end_coords, travel_mode="driving"):
+    """Get real road routes from free OSRM public server - redirects to enhanced version"""
+    return get_free_osrm_routes_with_waypoints(start_coords, end_coords, travel_mode)
+
 
 def generate_simulated_routes(start_coords, end_coords, travel_mode="driving"):
-    """Generate simulated routes when OSRM is unavailable"""
+    """Generate simulated routes when OSRM is unavailable - last resort only"""
     
     start_lat, start_lon = start_coords
     end_lat, end_lon = end_coords
@@ -841,56 +1174,10 @@ def generate_simulated_routes(start_coords, end_coords, travel_mode="driving"):
     return routes
 
 def generate_distinct_route_variants(base_route, num_variants=2, variance_factor=0.015):
-    """Generate more distinct route variants that actually take different paths"""
-    if not base_route or len(base_route) < 3:
-        return []
-    
-    variants = []
-    route_len = len(base_route)
-    
-    # Extract start and end points
-    start_point = base_route[0]
-    end_point = base_route[-1]
-    
-    for variant_idx in range(num_variants):
-        variant = []
-        
-        for i, (lon, lat) in enumerate(base_route):
-            if i == 0 or i == len(base_route) - 1:
-                # Keep start and end points exactly the same
-                variant.append([lon, lat])
-            else:
-                # Create different perturbation patterns for each variant
-                progress = i / route_len
-                
-                # Increase variance factor for middle portions of the route
-                middle_boost = 1.0 + (2.0 * (0.5 - abs(progress - 0.5)))
-                
-                if variant_idx == 0:
-                    # Northern detour variant - creates an arc above the direct path
-                    lat_offset = variance_factor * middle_boost * math.sin(progress * math.pi) * 2.5
-                    lon_offset = variance_factor * middle_boost * math.cos(progress * math.pi * 2) * 0.8
-                elif variant_idx == 1:
-                    # Southern detour variant - creates an arc below the direct path
-                    lat_offset = -variance_factor * middle_boost * math.sin(progress * math.pi) * 2.5
-                    lon_offset = -variance_factor * middle_boost * math.sin(progress * math.pi * 3) * 0.8
-                else:
-                    # Eastern/Western zigzag variant
-                    segment_num = int(progress * 5)  # Divide route into 5 segments
-                    if segment_num % 2 == 0:
-                        lon_offset = variance_factor * middle_boost * 2.0
-                        lat_offset = variance_factor * math.sin(i * 0.3) * 0.5
-                    else:
-                        lon_offset = -variance_factor * middle_boost * 2.0
-                        lat_offset = -variance_factor * math.sin(i * 0.3) * 0.5
-                
-                variant.append([lon + lon_offset, lat + lat_offset])
-        
-        # Smooth the variant to make it look more like a real route
-        smoothed_variant = smooth_route(variant)
-        variants.append(smoothed_variant)
-    
-    return variants
+    """Generate more distinct route variants that actually take different paths - DEPRECATED"""
+    # This function is now deprecated as we use waypoint-based alternatives
+    # Kept for backward compatibility
+    return []
 
 def smooth_route(route, smoothing_factor=0.3):
     """Apply smoothing to make routes look more natural"""
@@ -917,13 +1204,13 @@ def smooth_route(route, smoothing_factor=0.3):
     smoothed.append(route[-1])  # Keep end point
     return smoothed
 
-# ================= ROUTE OPTIMIZATION WITH VARIANTS =================
+
+# ================= ROUTE OPTIMIZATION WITH VARIANTS - FIXED =================
 def optimize_and_select_routes(routes_dict, crime_df, start_coords, end_coords,
                                travel_mode="driving", time_of_travel="Any Time",
                                safety_priority="balanced", generate_variants=True):
     """
-    Enhanced version that ensures diverse route options for balanced mode
-    Now uses probabilistic model with time-of-day weighting
+    FIXED VERSION: Always returns multiple routes for balanced mode
     """
     # Create optimizer
     optimizer = RouteOptimizer(crime_df, time_of_travel)
@@ -937,119 +1224,103 @@ def optimize_and_select_routes(routes_dict, crime_df, start_coords, end_coords,
     
     alpha, beta = priority_weights.get(safety_priority, (0.5, 0.5))
     
-    # For balanced mode, create different route options with different tradeoffs
-    if safety_priority == "balanced" and generate_variants:
-        base_routes = list(routes_dict.values())
+    # For balanced mode, ensure we have multiple real road routes
+    if safety_priority == "balanced":
+        # Making sure we have at least 2 routes
+        if len(routes_dict) < 2:
+            # alternate routes fixed
+            routes, route_info = get_free_osrm_routes_with_waypoints(
+                start_coords, end_coords, travel_mode, num_alternatives=3
+            )
+            if routes and len(routes) > len(routes_dict):
+                routes_dict = routes
         
-        if not base_routes:
-            return None
-        
-        # Use the first route as base
-        primary_route = base_routes[0]
-        
-        # Generate distinct alternative routes with larger variance
-        distinct_variants = generate_distinct_route_variants(
-            primary_route, 
-            num_variants=2, 
-            variance_factor=0.025  # Increased for more distinction
-        )
-        
-        # Prepare diverse route candidates
-        route_candidates = []
-        
-        # Add base route
-        route_candidates.append(("base", primary_route))
-        
-        # Add variants if available
-        if distinct_variants:
-            route_candidates.append(("variant_north", distinct_variants[0]))
-            if len(distinct_variants) > 1:
-                route_candidates.append(("variant_south", distinct_variants[1]))
-        
-        # Add OSRM alternatives if available
-        if len(base_routes) > 1:
-            route_candidates.append(("osrm_alt", base_routes[1]))
-        
-        # Score all candidates with DIFFERENT weight combinations to ensure diversity
-        scored_routes = []
-        
-        # Score with safety priority (safer route)
-        safety_alpha, safety_beta = 0.3, 0.7  # 30% distance, 70% safety
-        
-        # Score with speed priority (faster route)
-        speed_alpha, speed_beta = 0.7, 0.3   # 70% distance, 30% safety
-        
-        # Score each route with both weight sets
-        safety_best = None
-        speed_best = None
-        safety_best_score = float('inf')
-        speed_best_score = float('inf')
-        
-        for route_name, route_coords in route_candidates:
-            # Score with safety priority
-            safety_score = optimizer.calculate_objective_function(
+        # Score all routes
+        all_scored_routes = []
+        for route_name, route_coords in routes_dict.items():
+            if not route_coords:
+                continue
+                
+            # Score with balanced weights
+            score_data = optimizer.calculate_objective_function(
                 route_coords, start_coords, end_coords,
-                travel_mode, "09:00", safety_alpha, safety_beta
+                travel_mode, "09:00", alpha, beta
             )
             
-            # Score with speed priority
-            speed_score = optimizer.calculate_objective_function(
-                route_coords, start_coords, end_coords,
-                travel_mode, "09:00", speed_alpha, speed_beta
-            )
-            
-            # Track best safety route
-            if safety_score['objective_score'] < safety_best_score:
-                safety_best_score = safety_score['objective_score']
-                safety_best = (route_name, route_coords, safety_score)
-            
-            # Track best speed route
-            if speed_score['objective_score'] < speed_best_score:
-                speed_best_score = speed_score['objective_score']
-                # Use the safety-weighted score for metadata to show actual risk
-                actual_risk_score = optimizer.calculate_objective_function(
-                    route_coords, start_coords, end_coords,
-                    travel_mode, "09:00", 0.5, 0.5  # Balanced weights for display
-                )
-                speed_best = (route_name, route_coords, actual_risk_score)
+            all_scored_routes.append({
+                'name': route_name,
+                'coordinates': route_coords,
+                'score_data': score_data,
+                'objective_score': score_data['objective_score']
+            })
         
-        # Build result with diverse routes
+        # Sort by objective score
+        all_scored_routes.sort(key=lambda x: x['objective_score'])
+        
+        # Build result with at least 2 routes
         result_routes = {}
         
-        # Primary route is the safer option
-        if safety_best:
-            _, safe_coords, safe_score = safety_best
+        if len(all_scored_routes) >= 2:
+            # Primary route (best score)
+            primary = all_scored_routes[0]
             result_routes["primary_route"] = {
-                'coordinates': safe_coords,
-                'safety_level': get_safety_level_from_probability(safe_score['crime_probability_percentage'], travel_mode),
-                'metadata': safe_score
+                'coordinates': primary['coordinates'],
+                'safety_level': get_safety_level_from_probability(
+                    primary['score_data']['crime_probability_percentage'], travel_mode
+                ),
+                'metadata': primary['score_data']
             }
-        
-        # Alternative route is the faster option (if different from primary)
-        if speed_best and safety_best:
-            _, speed_coords, speed_score = speed_best
-            _, safe_coords, _ = safety_best
             
-            # Check if routes are actually different
-            if not routes_are_similar(speed_coords, safe_coords):
+            # Alternative route (second best or most different)
+            # Check if second route is significantly different
+            alternative = None
+            for route in all_scored_routes[1:]:
+                if not routes_are_similar(route['coordinates'], primary['coordinates'], threshold=0.5):
+                    alternative = route
+                    break
+            
+            # If no significantly different route, just use second best
+            if alternative is None:
+                alternative = all_scored_routes[1]
+            
+            result_routes["alternative_route"] = {
+                'coordinates': alternative['coordinates'],
+                'safety_level': get_safety_level_from_probability(
+                    alternative['score_data']['crime_probability_percentage'], travel_mode
+                ),
+                'metadata': alternative['score_data']
+            }
+            
+        elif len(all_scored_routes) == 1:
+            # Only one route available - duplicate it as both primary and alternative
+            # This is a last resort scenario
+            route = all_scored_routes[0]
+            result_routes["primary_route"] = {
+                'coordinates': route['coordinates'],
+                'safety_level': get_safety_level_from_probability(
+                    route['score_data']['crime_probability_percentage'], travel_mode
+                ),
+                'metadata': route['score_data']
+            }
+            
+            # Try to generate one more alternative
+            forced_alt = generate_forced_alternatives(start_coords, end_coords, travel_mode, num_needed=1)
+            if forced_alt:
+                alt_coords = forced_alt[0]['coordinates']
+                alt_score = optimizer.calculate_objective_function(
+                    alt_coords, start_coords, end_coords,
+                    travel_mode, "09:00", alpha, beta
+                )
                 result_routes["alternative_route"] = {
-                    'coordinates': speed_coords,
-                    'safety_level': get_safety_level_from_probability(speed_score['crime_probability_percentage'], travel_mode),
-                    'metadata': speed_score
+                    'coordinates': alt_coords,
+                    'safety_level': get_safety_level_from_probability(
+                        alt_score['crime_probability_percentage'], travel_mode
+                    ),
+                    'metadata': alt_score
                 }
             else:
-                # If they're too similar, force a variant route
-                if distinct_variants:
-                    variant_coords = distinct_variants[1] if len(distinct_variants) > 1 else distinct_variants[0]
-                    variant_score = optimizer.calculate_objective_function(
-                        variant_coords, start_coords, end_coords,
-                        travel_mode, "09:00", 0.5, 0.5
-                    )
-                    result_routes["alternative_route"] = {
-                        'coordinates': variant_coords,
-                        'safety_level': get_safety_level_from_probability(variant_score['crime_probability_percentage'], travel_mode),
-                        'metadata': variant_score
-                    }
+                # Absolute last resort - show same route as alternative
+                result_routes["alternative_route"] = result_routes["primary_route"]
         
         return result_routes
     
@@ -1411,8 +1682,13 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving",
         start_lat, start_lon = start_coords_dict['lat'], start_coords_dict['lon']
         end_lat, end_lon = end_coords_dict['lat'], end_coords_dict['lon']
         
-        # Get base routes from OSRM
-        routes, route_info = get_free_osrm_routes((start_lat, start_lon), (end_lat, end_lon), travel_mode)
+        # Get base routes from OSRM with waypoints for alternatives
+        routes, route_info = get_free_osrm_routes_with_waypoints(
+            (start_lat, start_lon), 
+            (end_lat, end_lon), 
+            travel_mode,
+            num_alternatives=3
+        )
         
         # Fallback to simulated routes if OSRM fails
         if routes is None:
@@ -1730,5 +2006,5 @@ def get_system_info():
     """Get information about the enhanced routing system"""
     return {
         "status": "Active",
-        "version": "4.0 - Probabilistic Model with Time-of-Day Analysis"
+        "version": "4.0 - Probabilistic Model with Time-of-Day Analysis and Enhanced Alternative Routes"
     }
