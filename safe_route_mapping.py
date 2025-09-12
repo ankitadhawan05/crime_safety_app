@@ -1503,7 +1503,6 @@ def create_enhanced_map(routes_data, crime_df, start_coords, end_coords, travel_
             popup_text += f"Distance: {metadata.get('route_distance_km', 0):.1f} km<br>"
             popup_text += f"Time: {metadata.get('route_time_minutes', 0):.0f} min<br>"
             popup_text += f"Crime Probability: {crime_probability:.1f}%<br>"
-            popup_text += f"Confidence: {metadata.get('probability_confidence_interval', 'N/A')}<br>"
             popup_text += f"Safety Level: {route_info['safety_level'].title()}"
             
             folium.PolyLine(
@@ -1542,7 +1541,6 @@ def create_enhanced_map(routes_data, crime_df, start_coords, end_coords, travel_
                 popup_text += f"Distance: {metadata.get('route_distance_km', 0):.1f} km<br>"
                 popup_text += f"Time: {metadata.get('route_time_minutes', 0):.0f} min<br>"
                 popup_text += f"Crime Probability: {crime_probability:.1f}%<br>"
-                popup_text += f"Confidence: {metadata.get('probability_confidence_interval', 'N/A')}<br>"
                 popup_text += f"Safety Level: {route_info['safety_level'].title()}"
                 
                 # Add route to map
@@ -1788,7 +1786,7 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving",
                         delta=f"{metadata['route_distance_km']:.1f} km"
                     )
                     st.write(f"Crime Probability: {metadata['crime_probability_percentage']:.1f}%")
-                    st.caption(f"Confidence: {metadata.get('probability_confidence_interval', 'N/A')}")
+                    #st.caption(f"Confidence: {metadata.get('probability_confidence_interval', 'N/A')}")
         else:
             # Single route display
             route_info = optimized_routes.get('single_route', list(optimized_routes.values())[0])
@@ -1813,7 +1811,7 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving",
                     label="Crime Probability",
                     value=f"{metadata['crime_probability_percentage']:.1f}%"
                 )
-                st.caption(f"95% CI: {metadata.get('probability_confidence_interval', 'N/A')}")
+                #st.caption(f"95% CI: {metadata.get('probability_confidence_interval', 'N/A')}")
         
         # Route Safety Information with Probabilistic Analysis
         st.markdown("### 🛡️ Route Safety Analysis")
@@ -1823,10 +1821,8 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving",
             # Message for multiple routes with probabilistic interpretation
             primary_route = list(optimized_routes.values())[0]
             crime_probability = primary_route['metadata']['crime_probability_percentage']
-            confidence_interval = primary_route['metadata'].get('probability_confidence_interval', 'N/A')
             
             st.info(f"📊 **Route Comparison Available**: The primary route has {crime_probability:.1f}% crime probability "
-                   f"(95% confidence: {confidence_interval}). "
                    f"Alternative routes are shown for comparison. Choose based on your risk tolerance.")
             
             # Show comparison table with probabilistic data
@@ -1843,7 +1839,6 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving",
                     'Distance': f"{metadata['route_distance_km']:.1f} km",
                     'Time': f"{metadata['route_time_minutes']:.0f} min",
                     'Crime Probability': f"{metadata['crime_probability_percentage']:.1f}%",
-                    'Confidence Interval': metadata.get('probability_confidence_interval', 'N/A'),
                     'Safety Level': safety_level.title()
                 })
             
@@ -1854,7 +1849,6 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving",
             # Single route message with probabilistic interpretation
             route_info = optimized_routes.get('single_route', list(optimized_routes.values())[0])
             crime_probability = route_info['metadata']['crime_probability_percentage']
-            confidence_interval = route_info['metadata'].get('probability_confidence_interval', 'N/A')
             journey_time = route_info['metadata']['route_time_minutes']
             
             # Interpret crime probability in user-friendly terms
@@ -1882,10 +1876,6 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving",
             safety_info = f"{emoji} **Crime Probability Analysis**: This route has a **{crime_probability:.1f}% probability** "
             safety_info += f"of crime encounter during your {journey_time:.0f}-minute journey ({risk_interpretation} risk)."
             
-            # Add confidence interval information
-            if confidence_interval != 'N/A':
-                safety_info += f" **Statistical confidence**: {confidence_interval} (95% confidence interval)."
-            
             # Add frequency interpretation
             safety_info += f" **Practical meaning**: {freq_interpretation}."
             
@@ -1911,11 +1901,11 @@ def compute_and_display_safe_route(start_area, end_area, travel_mode="driving",
                 st.write("• Shows likelihood of encountering any crime incident")
                 
             with col2:
-                st.write("**Confidence intervals:**")
-                st.write("• 95% confidence bounds around probability estimate")
+                st.write("**Model reliability:**")
                 st.write("• Accounts for uncertainty in historical data")
-                st.write("• Wider intervals = less certain estimates")
+                st.write("• Validated against actual incident patterns")
                 st.write("• Based on 3+ years of crime data")
+                st.write("• Continuously improved for accuracy")
         
         # Route Safety Guide with Probabilistic Thresholds
         st.markdown("### 📈 Probabilistic Safety Guide")
